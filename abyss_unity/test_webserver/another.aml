@@ -1,0 +1,10 @@
+<!DOCTYPE aml>
+<aml>
+<head>
+    <script>
+console.log("hello abyss!");
+    </script>
+</head>
+<body>
+</body>
+</aml>
