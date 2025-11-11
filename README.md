@@ -3,7 +3,7 @@ The Web Conf. 2026 Demo Track Artifact
 
 # How to run
 
-The Release package includes the peer identity private key.
+The Release package includes an examplar peer identity private key.
 To run only one instance of the Abyss brower, just run AbyssUI.exe.
 To run multiple instnaces, copy the entire folder in different location, and generate another private key using the command below.
 The command must be executed using powershell.
