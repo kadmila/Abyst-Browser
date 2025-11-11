@@ -5,7 +5,7 @@ The Web Conf. 2026 Demo Track Artifact
 
 The Release package includes an examplar peer identity private key.
 Double click on AbyssUI.exe to run the Abyss browser.
-To run multiple instances of the Abyss browser, copy the entire folder in different location, and generate another private key using the command below.
+To run multiple instances of the Abyss browser, copy the entire folder in different location, delete the default identity private key, and generate another private key using the command below.
 The command must be executed using powershell.
 
 ```
