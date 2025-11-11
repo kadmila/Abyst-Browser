@@ -65,7 +65,7 @@ To change the list of targets to be synced with git, the ./export_unity.ps1 and 
 
 ## Quick ReBuild
 
-In powershell, run ./quick_rebuild.ps1 to rebuild the whole project except for the unity project, which has to be manually built.
+In powershell, run ./quick_rebuild.ps1 to rebuild the whole project except for the unity project, which has to be manually built within unity editor.
 To partially build abyss_core or abyss_engine, you may run ./build_dll.ps1 (in ./abyss_core), or ./build_debug.ps1 (in ./abyss_engine).
 
 If you find any problem building, please let us know.
