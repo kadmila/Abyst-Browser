@@ -51,15 +51,16 @@ Before starting the project setup, you must follow the initial setup procedure b
 5) Run ./quick_rebuild.ps1 two times. The second run should succeed without any errors.
 
 Now, we need to do an inconvence,
-5) Create a temporary Visual Studio C# project in any directory (outside the project).
-6) Install "Protobuf by Google" Nuget package.
-7) Copy the contents of Plugins/ folder into ./AbyssUI/Assets/Plugins. This should include Google.Protobuf.dll
 
-8) Open the unity project. The unity editor should start withour an error (only warnings in the editor Debug Console).
-9) Open Scenes/SampleScene, which will show an UI with two address bars.
-10) Press "Play" button, and you should be able to write in the address bars.
-11) Enter "https://minwoowebeng.github.io" in the top bar, which should load a world with a night city dummy skybox. Use WASDQZ for movement.
-12) Leave play mode, and build unity project. Ensure you selected build directory to AbyssUIBuild.
+6) Create a temporary Visual Studio C# project in any directory (outside the project).
+7) Install "Protobuf by Google" Nuget package.
+8) Copy the contents of Plugins/ folder into ./AbyssUI/Assets/Plugins. This should include Google.Protobuf.dll
+
+9) Open the unity project. The unity editor should start withour an error (only warnings in the editor Debug Console).
+10) Open Scenes/SampleScene, which will show an UI with two address bars.
+11) Press "Play" button, and you should be able to write in the address bars.
+12) Enter "https://minwoowebeng.github.io" in the top bar, which should load a world with a night city dummy skybox. Use WASDQZ for movement.
+13) Leave play mode, and build unity project. Ensure you selected build directory to AbyssUIBuild.
 
 Then, go to *How to Run* section.
 
