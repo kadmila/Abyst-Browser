@@ -1,4 +1,4 @@
-AbyssUI
+/AbyssUI/*
 AbyssUIBuild
 *.exe
 *.dll
@@ -7,3 +7,13 @@ abyss_engine/ABI/*.cs
 abyss_engine/obj
 abyss_engine/bin
 Abyss-Browser.code-workspace
+*.db
+*.vsidx
+*cache.v2
+*.suo
+*.json
+*.bin
+*.meta
+*copilot-chat*
+*.vsconfig
+*.pdb
