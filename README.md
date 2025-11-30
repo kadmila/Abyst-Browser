@@ -53,9 +53,9 @@ Before starting the project setup, you must follow the initial setup procedure b
 5) Run ./quick_rebuild.ps1 two times. The second run should succeed without any errors.
 
 Now, we need to do an inconvence,
-6) Create a temporary Visual Studio C# project in any directory (outside the project).
+6) Create a temporary Visual Studio C# .NET framework 4.8 project in any directory (outside the project).
 7) Install "Google.Protobuf" Nuget package and build solution.
-8) Copy the contents of Plugins/ folder into ./AbyssUI/Assets/Plugins. This should include Google.Protobuf.dll
+8) Copy all the DLLs in the build folder into ./AbyssUI/Assets/Plugins. This should include Google.Protobuf.dll
 
 9) Open the unity project. The unity editor should start withour an error (only warnings in the editor Debug Console).
 10) Open Scenes/SampleScene, which will show an UI with two address bars.
