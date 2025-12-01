@@ -44,6 +44,9 @@ Copy-Item -Path .\AbyssUI\Assets\AbyssUI_v0.9.prefab -Destination .\abyss_unity\
 #meta
 Copy-Item -Path .\AbyssUI\Assets\AbyssUI_v0.9.prefab.meta -Destination .\abyss_unity\unity_source\Assets\AbyssUI_v0.9.prefab.meta -Recurse -Force
 
+# create directories for other folders in AbyssUI
+New-Item -Path .\abyss_unity\unity_source\ProjectSettings -ItemType Directory
+New-Item -Path .\abyss_unity\unity_source\UserSettings -ItemType Directory
 # Copy Other folders in AbyssUI
 Copy-Item -Path .\AbyssUI\ProjectSettings\* -Destination .\abyss_unity\unity_source\ProjectSettings\ -Recurse -Force
 Copy-Item -Path .\AbyssUI\UserSettings\* -Destination .\abyss_unity\unity_source\UserSettings\ -Recurse -Force
