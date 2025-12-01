@@ -1,12 +1,12 @@
 /AbyssUI/*
 /AbyssUIBuild
-*.exe
-*.dll
 /abyss_core/abyssnet.h
 /abyss_engine/ABI/*.cs
 /abyss_engine/obj
 /abyss_engine/bin
 Abyss-Browser.code-workspace
+*.exe
+*.dll
 *.db
 *.vsidx
 *cache.v2
