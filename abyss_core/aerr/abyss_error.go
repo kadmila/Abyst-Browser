@@ -1,3 +1,6 @@
+/*
+Package aerr defines custom errors for abyss-core
+*/
 package aerr
 
 import (
