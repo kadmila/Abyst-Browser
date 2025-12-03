@@ -37,8 +37,6 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-const version = "0.9.0"
-
 // return value (C.int)
 const (
 	EOF               = -1
