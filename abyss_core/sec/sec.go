@@ -1,6 +1,10 @@
 // package sec provides security-related functions for abyss.
 // This package includes implementations for abyss certificate
 // chain and its verification.
+//
+// In abyss certificate chain, subdomain represents a specific role/use case.
+// h.{id} indicates a handshake encryption key for OAEP-SHA3-256-AES-256-GCM.
+// tls.{id} indicates a TLS binding certificate.
 package sec
 
 import (
@@ -12,7 +16,7 @@ import (
 	"github.com/btcsuite/btcutil/base58"
 )
 
-func AbyssIDFromKey(pub crypto.PublicKey) (string, error) {
+func abyssIDFromKey(pub crypto.PublicKey) (string, error) {
 	derBytes, err := x509.MarshalPKIXPublicKey(pub)
 	if err != nil {
 		return "", fmt.Errorf("unable to marshal public key to DER: %v", err)

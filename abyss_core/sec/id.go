@@ -13,6 +13,7 @@ import (
 	"errors"
 )
 
+// AbyssPeerIdentity contains a set of keys and certificates that identifies a peer.
 type AbyssPeerIdentity struct {
 	id                  string
 	root_self_cert_x509 *x509.Certificate
@@ -53,27 +54,26 @@ func NewAbyssPeerIdentityFromDER(root_self_cert []byte, handshake_key_cert []byt
 // Abyss uses Common Name (CN).
 func NewAbyssPeerIdentity(root_self_cert *x509.Certificate, handshake_key_cert *x509.Certificate) (*AbyssPeerIdentity, error) {
 	// validate root self cert
-	id, err := AbyssIDFromKey(root_self_cert.PublicKey)
+	id, err := abyssIDFromKey(root_self_cert.PublicKey)
 	if err != nil {
 		return nil, errors.New("invalid root certificate; failed to hash")
 	}
 	if root_self_cert.Issuer.CommonName != id {
-		return nil, errors.New("invalid root certificate; name mismatch")
+		return nil, errors.New("invalid root certificate; unrecognized name")
 	}
 	if root_self_cert.Subject.CommonName != id {
 		return nil, errors.New("invalid root certificate; not self-signed")
 	}
 
 	// validate handshake key cert
-	if handshake_key_cert.Issuer.CommonName != id {
-		return nil, errors.New("invalid handshake certificate; issuer mismatch")
-	}
 	if err := handshake_key_cert.CheckSignatureFrom(root_self_cert); err != nil {
 		return nil, err
 	}
-	// currently, we only support OAEP-SHA3-256-AES-256-GCM handhskake key. We may support more in the future.
-	if handshake_key_cert.Subject.CommonName != "OAEP-SHA3-256-AES-256-GCM."+id {
-		return nil, errors.New("unsupported public key encryption scheme: " + handshake_key_cert.Subject.CommonName)
+	if handshake_key_cert.Issuer.CommonName != id {
+		return nil, errors.New("invalid handshake key certificate; issuer mismatch")
+	}
+	if handshake_key_cert.Subject.CommonName != "h."+id {
+		return nil, errors.New("invalid handshake key certificate name: " + handshake_key_cert.Subject.CommonName)
 	}
 	pkey, ok := handshake_key_cert.PublicKey.(*rsa.PublicKey)
 	if !ok {
@@ -119,47 +119,53 @@ func NewAbyssPeerIdentity(root_self_cert *x509.Certificate, handshake_key_cert *
 	}, nil
 }
 
-func (p *AbyssPeerIdentity) IDHash() string {
-	return p.id
-}
-func (p *AbyssPeerIdentity) EncryptHandshake(payload []byte) ([]byte, error) {
-	aesKey := make([]byte, 32) //AES-256 key
+// EncryptHandshake encrypts the payload with the handshake encryption key.
+// First, the payload is encrypted with a random AES-128 key and GCM nonce.
+// Then, the key and nonce are encrypted with RSA OAEP.
+// The return values are encrypted payload, encrypted aes secret, and error.
+func (p *AbyssPeerIdentity) EncryptHandshake(payload []byte) ([]byte, []byte, error) {
+	// Generate a random 32-byte AES-256 key
+	aesKey := make([]byte, 32)
 	_, err := rand.Read(aesKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	nonce := make([]byte, 12) //AES-GCM nonce
+	// Generate a 12-byte nonce (standard size for AES-GCM)
+	nonce := make([]byte, 12)
 	_, err = rand.Read(nonce)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	// Create a new AES block cipher using the generated key
 	block, err := aes.NewCipher(aesKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	// Wrap the AES block cipher in GCM mode, with AEAD
 	aesGCM, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-
+	// Encrypt the payload using AES-GCM
 	encrypted_payload := aesGCM.Seal(nil, nonce, payload, nil)
 
-	encrypted_key_nonce, err := rsa.EncryptOAEP(sha3.New256(), rand.Reader, p.handshake_pub_key, append(aesKey, nonce...), nil)
-	return append(encrypted_key_nonce, encrypted_payload...), err
+	// Encrypt the aes secret (key and nonce) in RSA OAEP
+	aes_secret := append(aesKey, nonce...)
+	encrypted_aes_secret, err := rsa.EncryptOAEP(sha3.New256(), rand.Reader, p.handshake_pub_key, aes_secret, nil)
+	return encrypted_payload, encrypted_aes_secret, err
 }
 func (p *AbyssPeerIdentity) VerifyTLSBinding(abyss_bind_cert *x509.Certificate, tls_cert *x509.Certificate) error {
-	if !abyss_bind_cert.PublicKey.(ed25519.PublicKey).Equal(tls_cert.PublicKey) {
-		return errors.New("tls public key mismatch")
-	}
-
-	if abyss_bind_cert.Issuer.CommonName != p.id {
-		return errors.New("issuer mismatch")
-	}
-	if abyss_bind_cert.Subject.CommonName != "tls."+p.id {
-		return errors.New("subject mismatch")
-	}
 	if err := abyss_bind_cert.CheckSignatureFrom(p.root_self_cert_x509); err != nil {
 		return err
+	}
+	if !abyss_bind_cert.PublicKey.(ed25519.PublicKey).Equal(tls_cert.PublicKey) {
+		return errors.New("invalid TLS binding key certificate; TLS public key mismatch")
+	}
+	if abyss_bind_cert.Issuer.CommonName != p.id {
+		return errors.New("invalid TLS binding key certificate; issuer mismatch")
+	}
+	if abyss_bind_cert.Subject.CommonName != "tls."+p.id {
+		return errors.New("invalid root certificate; unrecognized name")
 	}
 	return nil
 }

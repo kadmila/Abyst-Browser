@@ -16,8 +16,9 @@ import (
 	"time"
 )
 
-// PrivateKey is stupid but handy ad-hoc interface.
-// golang should revise standard crypto.PrivateKey interface.
+// PrivateKey interface ensures we only use private keys which can
+// derive its public key - as all key does (...)
+// golang crypto/ guys should be more confident.
 type PrivateKey interface {
 	Public() crypto.PublicKey
 }
@@ -28,14 +29,19 @@ func NewRootPrivateKey() (PrivateKey, error) {
 }
 
 // AbyssRootSecrets is the root identity of a user.
+// It implements ani.IAbyssPeerIdentity, along with administrator features.
 type AbyssRootSecrets struct {
-	root_priv_key       PrivateKey
-	root_self_cert_x509 *x509.Certificate
+	root_priv_key PrivateKey
+
+	id                  string
 	root_self_cert      string //pem
-	root_id_hash        string
+	root_self_cert_der  []byte
+	root_self_cert_x509 *x509.Certificate
 
 	handshake_priv_key *rsa.PrivateKey //may support others in future
-	handshake_key_cert string          //pem
+
+	handshake_key_cert     string //pem
+	handshake_key_cert_der []byte
 }
 
 func NewAbyssRootSecrets(root_private_key PrivateKey) (*AbyssRootSecrets, error) {
@@ -47,20 +53,20 @@ func NewAbyssRootSecrets(root_private_key PrivateKey) (*AbyssRootSecrets, error)
 	if err != nil {
 		return nil, err
 	}
-	peer_hash, err := AbyssIDFromKey(root_public_key)
+	id, err := abyssIDFromKey(root_public_key)
 	if err != nil {
 		return nil, err
 	}
 	r_template := x509.Certificate{
 		Issuer: pkix.Name{
-			CommonName: peer_hash,
+			CommonName: id,
 		},
 		Subject: pkix.Name{
-			CommonName: peer_hash,
+			CommonName: id,
 		},
 		NotBefore:             time.Now().Add(time.Duration(-1) * time.Second), //1-sec backdate, for badly synced peers.
 		SerialNumber:          serialNumber,
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		KeyUsage:              x509.KeyUsageCertSign,
 		IsCA:                  true,
 		BasicConstraintsValid: true,
 	}
@@ -69,6 +75,14 @@ func NewAbyssRootSecrets(root_private_key PrivateKey) (*AbyssRootSecrets, error)
 		return nil, err
 	}
 	r_x509, err := x509.ParseCertificate(r_derBytes)
+	if err != nil {
+		return nil, err
+	}
+	var r_pem_buf bytes.Buffer
+	err = pem.Encode(&r_pem_buf, &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: r_derBytes,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -84,10 +98,10 @@ func NewAbyssRootSecrets(root_private_key PrivateKey) (*AbyssRootSecrets, error)
 	}
 	h_template := x509.Certificate{
 		Issuer: pkix.Name{
-			CommonName: peer_hash,
+			CommonName: id,
 		},
 		Subject: pkix.Name{
-			CommonName: "H-" + peer_hash + "-OAEP-SHA3-256-AES-256-GCM", //handshake encryption key, RSA OAEP + AES-256 encryption
+			CommonName: "H-" + id + "-OAEP-SHA3-256-AES-256-GCM", //handshake encryption key, RSA OAEP + AES-256 encryption
 		},
 		NotBefore:             time.Now().Add(time.Duration(-1) * time.Second), //1-sec backdate, for badly synced peers.
 		SerialNumber:          serialNumber,
@@ -98,46 +112,40 @@ func NewAbyssRootSecrets(root_private_key PrivateKey) (*AbyssRootSecrets, error)
 	if err != nil {
 		return nil, err
 	}
-
-	var root_cert_buf bytes.Buffer
-	err = pem.Encode(&root_cert_buf, &pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: r_derBytes,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	var handshake_cert_buf bytes.Buffer
-	err = pem.Encode(&handshake_cert_buf, &pem.Block{
+	var h_pem_buf bytes.Buffer
+	err = pem.Encode(&h_pem_buf, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: h_derBytes,
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	return &AbyssRootSecrets{
-		root_priv_key:       root_private_key,
+		root_priv_key: root_private_key,
+
+		id:                  id,
+		root_self_cert:      r_pem_buf.String(),
+		root_self_cert_der:  r_derBytes,
 		root_self_cert_x509: r_x509,
-		root_self_cert:      root_cert_buf.String(),
-		root_id_hash:        peer_hash,
 
 		handshake_priv_key: handshake_private_key,
-		handshake_key_cert: handshake_cert_buf.String(),
+
+		handshake_key_cert:     h_pem_buf.String(),
+		handshake_key_cert_der: h_derBytes,
 	}, nil
 }
 
-func (r *AbyssRootSecrets) IDHash() string {
-	return r.root_id_hash
-}
-func (r *AbyssRootSecrets) DecryptHandshake(body []byte) ([]byte, error) {
-	key_block_size := r.handshake_priv_key.Size()
-	aes_key_nonce, err := rsa.DecryptOAEP(sha3.New256(), nil, r.handshake_priv_key, body[:key_block_size], nil)
+func (r *AbyssRootSecrets) DecryptHandshake(encrypted_payload, encrypted_aes_secret []byte) ([]byte, error) {
+	// decrypt AES-GCM secret
+	aes_secret, err := rsa.DecryptOAEP(sha3.New256(), nil, r.handshake_priv_key, encrypted_payload, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	block, err := aes.NewCipher(aes_key_nonce[:32])
+	aes_key := aes_secret[:32]
+	aes_nonce := aes_secret[32:]
+	// construct AES-GCM decryptor
+	block, err := aes.NewCipher(aes_key)
 	if err != nil {
 		return nil, err
 	}
@@ -145,25 +153,12 @@ func (r *AbyssRootSecrets) DecryptHandshake(body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	plaintext, err := aesGCM.Open(nil, aes_key_nonce[32:], body[key_block_size:], nil)
-
-	return plaintext, err
-}
-func (r *AbyssRootSecrets) RootCertificate() string {
-	return r.root_self_cert
-}
-func (r *AbyssRootSecrets) HandshakeKeyCertificate() string {
-	return r.handshake_key_cert
-}
-
-type TLSIdentity struct {
-	priv_key        crypto.PrivateKey
-	tls_self_cert   []byte //der
-	abyss_bind_cert []byte //der
+	// decrypt payload
+	return aesGCM.Open(nil, aes_nonce, encrypted_aes_secret, nil)
 }
 
 func (r *AbyssRootSecrets) NewTLSIdentity() (*TLSIdentity, error) {
-	ed25519_public_key, ed25519_private_key, err := ed25519.GenerateKey(rand.Reader)
+	tls_public_key, tls_private_key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, err
 	}
@@ -174,15 +169,16 @@ func (r *AbyssRootSecrets) NewTLSIdentity() (*TLSIdentity, error) {
 		return nil, err
 	}
 	self_template := x509.Certificate{
+		// no name
 		NotBefore:             time.Now().Add(time.Duration(-1) * time.Second), //1-sec backdate, for badly synced peers.
 		NotAfter:              time.Now().Add(7 * 24 * time.Hour),              // Valid for 7 days
 		SerialNumber:          serialNumber,
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageCertSign,
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		IsCA:                  true,
+		IsCA:                  false,
 		BasicConstraintsValid: true,
 	}
-	self_derBytes, err := x509.CreateCertificate(rand.Reader, &self_template, &self_template, ed25519_public_key, ed25519_private_key)
+	self_derBytes, err := x509.CreateCertificate(rand.Reader, &self_template, &self_template, tls_public_key, tls_private_key)
 	if err != nil {
 		return nil, err
 	}
@@ -191,28 +187,35 @@ func (r *AbyssRootSecrets) NewTLSIdentity() (*TLSIdentity, error) {
 	if err != nil {
 		return nil, err
 	}
-	auth_template := x509.Certificate{
+	bind_template := x509.Certificate{
 		Issuer: pkix.Name{
-			CommonName: r.root_id_hash,
+			CommonName: r.id,
 		},
 		Subject: pkix.Name{
-			CommonName: "T-" + r.root_id_hash,
+			CommonName: "tls." + r.id,
 		},
 		NotBefore:             time.Now().Add(time.Duration(-1) * time.Second), //1-sec backdate, for badly synced peers.
 		NotAfter:              time.Now().Add(7 * 24 * time.Hour),              // Valid for 7 days
 		SerialNumber:          serialNumber,
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		IsCA:                  false,
 		BasicConstraintsValid: true,
 	}
-	auth_derBytes, err := x509.CreateCertificate(rand.Reader, &auth_template, r.root_self_cert_x509, ed25519_public_key, r.root_priv_key)
+	bind_derBytes, err := x509.CreateCertificate(rand.Reader, &bind_template, r.root_self_cert_x509, tls_public_key, r.root_priv_key)
 	if err != nil {
 		return nil, err
 	}
 
 	return &TLSIdentity{
-		priv_key:        ed25519_private_key,
+		priv_key:        tls_private_key,
 		tls_self_cert:   self_derBytes,
-		abyss_bind_cert: auth_derBytes,
+		abyss_bind_cert: bind_derBytes,
 	}, nil
 }
+
+func (r *AbyssRootSecrets) ID() string                         { return r.id }
+func (r *AbyssRootSecrets) RootCertificate() string            { return r.root_self_cert }
+func (r *AbyssRootSecrets) RootCertificateDer() []byte         { return r.root_self_cert_der }
+func (r *AbyssRootSecrets) HandshakeKeyCertificate() string    { return r.handshake_key_cert }
+func (r *AbyssRootSecrets) HandshakeKeyCertificateDer() []byte { return r.handshake_key_cert_der }
