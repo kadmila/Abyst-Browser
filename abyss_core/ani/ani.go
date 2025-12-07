@@ -23,8 +23,7 @@ type IAbyssPeerIdentity interface {
 // It may implement abyst server internally.
 type IAbyssNode interface {
 	IAbyssPeerIdentity
-	LocalIPs() []*netip.Addr
-	Port() uint16
+	LocalAddrCandidates() []netip.AddrPort
 
 	Accept(context.Context) (IAbyssPeer, error)
 
@@ -53,11 +52,11 @@ type IAbyssNode interface {
 // Inbound messages are handled by internal handlers.
 type IAbyssPeer interface {
 	IAbyssPeerIdentity
-	// Locations are the confirmed address candidates.
+	// RemoteAddrCandidates are the confirmed address candidates.
 	// They accumulate after connection establishment.
-	Locations() []*netip.AddrPort
+	RemoteAddrCandidates() []*netip.AddrPort
 
-	// RemoteAddr is the actual connection endpoint, among Locations.
+	// RemoteAddr is the actual connection endpoint, among RemoteAddrCandidates.
 	RemoteAddr() *netip.AddrPort
 
 	// Sends ahmp messages. Encoding details are defined in ahmp package.

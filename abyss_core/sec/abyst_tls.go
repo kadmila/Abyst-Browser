@@ -28,7 +28,13 @@ type TLSIdentity struct {
 // This object is thread safe.
 // TODO: the peer id will be attached as a http request header (X-Abyss-ID)
 type VerifiedTlsCertMap struct {
-	inner *sync.Map // map[[32]byte]string
+	inner sync.Map // map[[32]byte]string
+}
+
+func NewVerifiedTlsCertMap() *VerifiedTlsCertMap {
+	return &VerifiedTlsCertMap{
+		inner: sync.Map{},
+	}
 }
 
 func (m *VerifiedTlsCertMap) Store(key [32]byte, value string) {

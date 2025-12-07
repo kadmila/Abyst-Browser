@@ -28,9 +28,9 @@ func NewRootPrivateKey() (PrivateKey, error) {
 	return privkey, err
 }
 
-// AbyssRootSecrets is the root identity of a user.
+// AbyssRootSecret is the root identity of a user.
 // It implements ani.IAbyssPeerIdentity, along with administrator features.
-type AbyssRootSecrets struct {
+type AbyssRootSecret struct {
 	root_priv_key PrivateKey
 
 	id                  string
@@ -44,7 +44,7 @@ type AbyssRootSecrets struct {
 	handshake_key_cert_der []byte
 }
 
-func NewAbyssRootSecrets(root_private_key PrivateKey) (*AbyssRootSecrets, error) {
+func NewAbyssRootSecrets(root_private_key PrivateKey) (*AbyssRootSecret, error) {
 	root_public_key := root_private_key.Public()
 
 	//root certificate
@@ -121,7 +121,7 @@ func NewAbyssRootSecrets(root_private_key PrivateKey) (*AbyssRootSecrets, error)
 		return nil, err
 	}
 
-	return &AbyssRootSecrets{
+	return &AbyssRootSecret{
 		root_priv_key: root_private_key,
 
 		id:                  id,
@@ -136,7 +136,7 @@ func NewAbyssRootSecrets(root_private_key PrivateKey) (*AbyssRootSecrets, error)
 	}, nil
 }
 
-func (r *AbyssRootSecrets) DecryptHandshake(encrypted_payload, encrypted_aes_secret []byte) ([]byte, error) {
+func (r *AbyssRootSecret) DecryptHandshake(encrypted_payload, encrypted_aes_secret []byte) ([]byte, error) {
 	// decrypt AES-GCM secret
 	aes_secret, err := rsa.DecryptOAEP(sha3.New256(), nil, r.handshake_priv_key, encrypted_payload, nil)
 	if err != nil {
@@ -157,7 +157,7 @@ func (r *AbyssRootSecrets) DecryptHandshake(encrypted_payload, encrypted_aes_sec
 	return aesGCM.Open(nil, aes_nonce, encrypted_aes_secret, nil)
 }
 
-func (r *AbyssRootSecrets) NewTLSIdentity() (*TLSIdentity, error) {
+func (r *AbyssRootSecret) NewTLSIdentity() (*TLSIdentity, error) {
 	tls_public_key, tls_private_key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, err
@@ -214,8 +214,8 @@ func (r *AbyssRootSecrets) NewTLSIdentity() (*TLSIdentity, error) {
 	}, nil
 }
 
-func (r *AbyssRootSecrets) ID() string                         { return r.id }
-func (r *AbyssRootSecrets) RootCertificate() string            { return r.root_self_cert }
-func (r *AbyssRootSecrets) RootCertificateDer() []byte         { return r.root_self_cert_der }
-func (r *AbyssRootSecrets) HandshakeKeyCertificate() string    { return r.handshake_key_cert }
-func (r *AbyssRootSecrets) HandshakeKeyCertificateDer() []byte { return r.handshake_key_cert_der }
+func (r *AbyssRootSecret) ID() string                         { return r.id }
+func (r *AbyssRootSecret) RootCertificate() string            { return r.root_self_cert }
+func (r *AbyssRootSecret) RootCertificateDer() []byte         { return r.root_self_cert_der }
+func (r *AbyssRootSecret) HandshakeKeyCertificate() string    { return r.handshake_key_cert }
+func (r *AbyssRootSecret) HandshakeKeyCertificateDer() []byte { return r.handshake_key_cert_der }
