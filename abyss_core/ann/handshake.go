@@ -2,27 +2,33 @@ package ann
 
 import (
 	"github.com/fxamacker/cbor/v2"
+	"github.com/kadmila/Abyss-Browser/abyss_core/sec"
 	"github.com/quic-go/quic-go"
 )
 
-type InboundConnection struct {
-	conn         quic.Connection
+// type InboundConnection struct {
+// 	conn         quic.Connection
+// 	ahmp_encoder *cbor.Encoder
+// 	ahmp_decoder *cbor.Decoder
+// }
+
+type AuthenticatedConnection struct {
+	identity     *sec.AbyssPeerIdentity
+	is_inbound   bool
+	connection   quic.Connection
 	ahmp_encoder *cbor.Encoder
 	ahmp_decoder *cbor.Decoder
 }
 
-type OutboundConnection struct {
-	conn         quic.Connection
-	ahmp_encoder *cbor.Encoder
-	ahmp_decoder *cbor.Decoder
-}
+// type AbyssConnection struct {
+// 	inbound_connection   quic.Connection
+// 	inbound_ahmp_encoder *cbor.Encoder
+// 	inbound_ahmp_decoder *cbor.Decoder
 
-type AbyssConnection struct {
-	inbound_connection  quic.Connection
-	outbound_connection quic.Connection
-	ahmp_encoder        *cbor.Encoder
-	ahmp_decoder        *cbor.Decoder
-}
+// 	outbound_connection   quic.Connection
+// 	outbound_ahmp_encoder *cbor.Encoder
+// 	outbound_ahmp_decoder *cbor.Decoder
+// }
 
 const (
 	AbyssQuicRedundantConnection quic.ApplicationErrorCode = 1000

@@ -45,9 +45,13 @@ type IAbyssNode interface {
 	AppendKnownPeer(root_cert string, handshake_key_cert string) error
 	AppendKnownPeerDer(root_cert []byte, handshake_key_cert []byte) error
 
+	// EraseKnownPeer removes peer information.
+	// The peer cannot be dialed until the peer information is re-provided.
+	EraseKnownPeer(id string)
+
 	// Dial returns error only for unknown hash or invalid address.
 	// When connected, the connection can be retrieved from Accept().
-	Dial(hash string, addr *netip.AddrPort) bool
+	Dial(hash string, addr netip.AddrPort) bool
 
 	// Accept returns a newly established peer.
 	Accept(ctx context.Context) (IAbyssPeer, error)
