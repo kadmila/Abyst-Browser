@@ -2,6 +2,7 @@ package ann
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 	"sync"
 
@@ -14,7 +15,8 @@ import (
 // that completed abyss handshake.
 // It is passed to PeerConstructor.
 type AuthenticatedConnection struct {
-	identity     *sec.AbyssPeerIdentity
+	*sec.AbyssPeerIdentity
+
 	is_dialing   bool
 	connection   quic.Connection
 	remote_addr  netip.AddrPort
@@ -51,42 +53,78 @@ func NewPeerConstructor(local_id string) *PeerConstructor {
 // * Issue: it hard-blocks when BackLog is full.
 func (c *PeerConstructor) Append(ctx context.Context, connection *AuthenticatedConnection) {
 	// check who's in control.
-	controller_id, err := TieBreak(c.local_id, connection.identity.ID())
+	controller_id, err := TieBreak(c.local_id, connection.ID())
 	if err != nil {
 		c.AppendError(connection.remote_addr, connection.is_dialing, err)
 		connection.connection.CloseWithError(AbyssQuicCryptoFail, "abyss tie breaking fail")
 		return
 	}
 	if c.local_id == controller_id {
-		// I'm in control.
+		// I'm in control. Append peer only when there is no active connection.
+		var new_peer *AbyssPeer
+		var is_new_peer_created bool
+
+		c.mtx.Lock()
+		{
+			_, ok := c.connected_peers[connection.ID()]
+			if !ok {
+				c.internal_peer_id_cnt++
+				new_peer = NewAbyssPeer(*connection, c, c.internal_peer_id_cnt)
+				c.connected_peers[connection.ID()] = new_peer
+			}
+			is_new_peer_created = !ok
+		}
+		c.mtx.Unlock()
+
+		// connection confirmation (handshake 3)
+		code := 0
+		err = connection.ahmp_encoder.Encode(code)
+		if err != nil {
+			connection.connection.CloseWithError(AbyssQuicAhmpStreamFail, "fail to send abyss confirmation")
+			c.AppendError(connection.remote_addr, connection.is_dialing, err)
+			return
+		}
+
+		if is_new_peer_created {
+			c.BackLog <- BackLogEntry{
+				peer: new_peer,
+				err:  nil,
+			}
+		} else {
+			connection.connection.CloseWithError(AbyssQuicRedundantConnection, "")
+			c.AppendError(connection.remote_addr, connection.is_dialing, errors.New("redundant connection"))
+		}
 		return
 	} else {
 		// Opponent is in control.
+		// Wait for connection confirmation (handshake 3)
 		var code int
 		err := connection.ahmp_decoder.Decode(&code)
 		if err != nil {
 			// opponent killed the connection (or ahmp stream fail)
-			c.AppendError(connection.remote_addr, connection.is_dialing, err)
 			connection.connection.CloseWithError(AbyssQuicAhmpStreamFail, "abyss confirmation fail")
+			c.AppendError(connection.remote_addr, connection.is_dialing, err)
 			return
 		}
-		// This connection is accepted.
-		c.internal_peer_id_cnt += 1
-		established_peer := NewAbyssPeer(connection, c.internal_peer_id_cnt)
+		var new_peer *AbyssPeer
 
+		// This connection is accepted.
 		c.mtx.Lock()
 		{
+			c.internal_peer_id_cnt++
+			new_peer = NewAbyssPeer(*connection, c, c.internal_peer_id_cnt)
+
 			// renew peer if old one exists.
-			old_peer, ok := c.connected_peers[connection.identity.ID()]
+			old_peer, ok := c.connected_peers[connection.ID()]
 			if ok {
-				//connection.connection.
+				old_peer.connection.CloseWithError(AbyssQuicOverride, "")
 			}
-			c.connected_peers[connection.identity.ID()] = established_peer
+			c.connected_peers[connection.ID()] = new_peer
 		}
 		c.mtx.Unlock()
 
 		c.BackLog <- BackLogEntry{
-			peer: established_peer,
+			peer: new_peer,
 			err:  nil,
 		}
 		return
@@ -100,11 +138,14 @@ func (c *PeerConstructor) AppendError(addr netip.AddrPort, is_dialing bool, err 
 	}
 }
 
-func (c *PeerConstructor) ReportDisconnect(id string) {
+func (c *PeerConstructor) ReportPeerClose(peer *AbyssPeer) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	delete(c.connected_peers, id)
+	old_peer, ok := c.connected_peers[peer.ID()]
+	if ok && old_peer.Equal(peer) {
+		delete(c.connected_peers, peer.ID())
+	}
 }
 
 // Tie breaking

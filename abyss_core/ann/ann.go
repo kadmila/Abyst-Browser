@@ -10,11 +10,13 @@ import (
 	"crypto/x509"
 	"errors"
 	"net"
+	"net/http"
 	"net/netip"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/kadmila/Abyss-Browser/abyss_core/ahmp"
+	"github.com/kadmila/Abyss-Browser/abyss_core/ani"
 	"github.com/kadmila/Abyss-Browser/abyss_core/sec"
 	"github.com/quic-go/quic-go"
 )
@@ -70,6 +72,8 @@ func NewAbyssNode(root_private_key sec.PrivateKey) (*AbyssNode, error) {
 
 		dial_stats:         MakeDialInfoMap(),
 		verified_tls_certs: sec.NewVerifiedTlsCertMap(),
+
+		peer_ctor: NewPeerConstructor(root_secret.ID()),
 	}, nil
 }
 
@@ -209,7 +213,7 @@ func (n *AbyssNode) serveAbyssInbound(connection quic.Connection) {
 	// receive and decrypt peer's tls-binding certificate
 	var handshake_1_message ahmp.RawHS1
 	if err = ahmp_decoder.Decode(&handshake_1_message); err != nil {
-		connection.CloseWithError(AbyssQuicAhmpStreamFail, "failed to receie AHMP")
+		connection.CloseWithError(AbyssQuicAhmpStreamFail, "failed to receive AHMP")
 		n.peer_ctor.AppendError(addr, false, err)
 		return
 	}
@@ -252,12 +256,12 @@ func (n *AbyssNode) serveAbyssInbound(connection quic.Connection) {
 	}
 
 	n.peer_ctor.Append(n.service_ctx, &AuthenticatedConnection{
-		identity:     peer_identity,
-		is_dialing:   false,
-		connection:   connection,
-		remote_addr:  addr,
-		ahmp_encoder: ahmp_encoder,
-		ahmp_decoder: ahmp_decoder,
+		AbyssPeerIdentity: peer_identity,
+		is_dialing:        false,
+		connection:        connection,
+		remote_addr:       addr,
+		ahmp_encoder:      ahmp_encoder,
+		ahmp_decoder:      ahmp_decoder,
 	})
 }
 
@@ -380,24 +384,32 @@ func (n *AbyssNode) Dial(id string, addr netip.AddrPort) error {
 		}
 
 		n.peer_ctor.Append(n.service_ctx, &AuthenticatedConnection{
-			identity:     peer_identity,
-			is_dialing:   true,
-			connection:   connection,
-			remote_addr:  addr,
-			ahmp_encoder: ahmp_encoder,
-			ahmp_decoder: ahmp_decoder,
+			AbyssPeerIdentity: peer_identity,
+			is_dialing:        true,
+			connection:        connection,
+			remote_addr:       addr,
+			ahmp_encoder:      ahmp_encoder,
+			ahmp_decoder:      ahmp_decoder,
 		})
 	}()
 	return nil
 }
 
-func (n *AbyssNode) Accept(ctx context.Context) (*AbyssPeer, error) {
+func (n *AbyssNode) Accept(ctx context.Context) (ani.IAbyssPeer, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case backlog_entry := <-n.peer_ctor.BackLog:
 		return backlog_entry.peer, backlog_entry.err
 	}
+}
+
+func (n *AbyssNode) NewAbystClient() (ani.IAbystClient, error) {
+	return nil, nil
+}
+
+func (n *AbyssNode) NewCollocatedHttp3Client() (*http.Client, error) {
+	return nil, nil
 }
 
 // Close gracefully closes AbyssNode.

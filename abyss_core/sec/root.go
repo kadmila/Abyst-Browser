@@ -103,7 +103,7 @@ func NewAbyssRootSecrets(root_private_key PrivateKey) (*AbyssRootSecret, error) 
 			CommonName: id,
 		},
 		Subject: pkix.Name{
-			CommonName: "H-" + id + "-OAEP-SHA3-256-AES-256-GCM", //handshake encryption key, RSA OAEP + AES-256 encryption
+			CommonName: "h." + id,
 		},
 		NotBefore:             issue_time,
 		SerialNumber:          serialNumber,
@@ -123,6 +123,21 @@ func NewAbyssRootSecrets(root_private_key PrivateKey) (*AbyssRootSecret, error) 
 		return nil, err
 	}
 
+	// { // debug
+	// 	err = r_x509.CheckSignatureFrom(r_x509)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	h_cert, err := x509.ParseCertificate(h_derBytes)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	err = h_cert.CheckSignatureFrom(r_x509)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// }
+
 	return &AbyssRootSecret{
 		root_priv_key: root_private_key,
 
@@ -141,7 +156,7 @@ func NewAbyssRootSecrets(root_private_key PrivateKey) (*AbyssRootSecret, error) 
 
 func (r *AbyssRootSecret) DecryptHandshake(encrypted_payload, encrypted_aes_secret []byte) ([]byte, error) {
 	// decrypt AES-GCM secret
-	aes_secret, err := rsa.DecryptOAEP(sha3.New256(), nil, r.handshake_priv_key, encrypted_payload, nil)
+	aes_secret, err := rsa.DecryptOAEP(sha3.New256(), nil, r.handshake_priv_key, encrypted_aes_secret, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +172,7 @@ func (r *AbyssRootSecret) DecryptHandshake(encrypted_payload, encrypted_aes_secr
 		return nil, err
 	}
 	// decrypt payload
-	return aesGCM.Open(nil, aes_nonce, encrypted_aes_secret, nil)
+	return aesGCM.Open(nil, aes_nonce, encrypted_payload, nil)
 }
 
 func (r *AbyssRootSecret) NewTLSIdentity() (*TLSIdentity, error) {
@@ -171,17 +186,21 @@ func (r *AbyssRootSecret) NewTLSIdentity() (*TLSIdentity, error) {
 	if err != nil {
 		return nil, err
 	}
-	self_template := x509.Certificate{
+	// memo: this is a problem with golang' crypto library.
+	// We can't use CheckSignatureFrom() function to verify non-CA self-signed certficate.
+	// In future, this TLS certificate should be
+	// IsCA: false, KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
+	tls_self_template := x509.Certificate{
 		// no name
 		NotBefore:             time.Now().Add(time.Duration(-1) * time.Second), //1-sec backdate, for badly synced peers.
 		NotAfter:              time.Now().Add(7 * 24 * time.Hour),              // Valid for 7 days
 		SerialNumber:          serialNumber,
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		IsCA:                  false,
+		IsCA:                  true,
 		BasicConstraintsValid: true,
 	}
-	self_derBytes, err := x509.CreateCertificate(rand.Reader, &self_template, &self_template, tls_public_key, tls_private_key)
+	tls_self_derBytes, err := x509.CreateCertificate(rand.Reader, &tls_self_template, &tls_self_template, tls_public_key, tls_private_key)
 	if err != nil {
 		return nil, err
 	}
@@ -210,9 +229,28 @@ func (r *AbyssRootSecret) NewTLSIdentity() (*TLSIdentity, error) {
 		return nil, err
 	}
 
+	// { // debug
+	// 	tls_cert, err := x509.ParseCertificate(tls_self_derBytes)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	err = tls_cert.CheckSignatureFrom(tls_cert)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	bind_cert, err := x509.ParseCertificate(bind_derBytes)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	err = bind_cert.CheckSignatureFrom(r.root_self_cert_x509)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// }
+
 	return &TLSIdentity{
 		priv_key:        tls_private_key,
-		tls_self_cert:   self_derBytes,
+		tls_self_cert:   tls_self_derBytes,
 		abyss_bind_cert: bind_derBytes,
 	}, nil
 }

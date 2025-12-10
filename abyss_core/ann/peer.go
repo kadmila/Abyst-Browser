@@ -1,17 +1,33 @@
 package ann
 
+import "net/netip"
+
 type AbyssPeer struct {
+	AuthenticatedConnection
+	origin      *PeerConstructor
 	internal_id uint64
 }
 
-func NewAbyssPeer(connection *AuthenticatedConnection, internal_id uint64) *AbyssPeer {
+func NewAbyssPeer(connection AuthenticatedConnection, origin *PeerConstructor, internal_id uint64) *AbyssPeer {
 	return &AbyssPeer{
-		internal_id: internal_id,
+		AuthenticatedConnection: connection,
+		origin:                  origin,
+		internal_id:             internal_id,
 	}
 }
 
+func (p *AbyssPeer) RemoteAddr() netip.AddrPort {
+	return p.remote_addr
+}
+
+func (p *AbyssPeer) Send(v any) error {
+	return p.ahmp_encoder.Encode(v)
+}
+
 func (p *AbyssPeer) Close() error {
-	return nil
+	err := p.connection.CloseWithError(AbyssQuicClose, "")
+	p.origin.ReportPeerClose(p)
+	return err
 }
 
 func (p *AbyssPeer) Equal(subject *AbyssPeer) bool {

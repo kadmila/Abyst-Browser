@@ -51,7 +51,7 @@ type IAbyssNode interface {
 
 	// Dial returns error only for unknown hash or invalid address.
 	// When connected, the connection can be retrieved from Accept().
-	Dial(hash string, addr netip.AddrPort) bool
+	Dial(hash string, addr netip.AddrPort) error
 
 	// Accept returns a newly established peer.
 	Accept(ctx context.Context) (IAbyssPeer, error)
@@ -61,7 +61,7 @@ type IAbyssNode interface {
 
 	// NewCollocatedHttpClient provides HTTP/3 client that runs on the same
 	// QUIC host with the abyst node, with TLS client auth enabled.
-	NewCollocatedHttp3Client() (http.Client, error)
+	NewCollocatedHttp3Client() (*http.Client, error)
 
 	// Close terminates internal loop.
 	// Even after Listen() failes, Close() should be called.
@@ -77,14 +77,11 @@ type IAbyssNode interface {
 type IAbyssPeer interface {
 	IAbyssPeerIdentity
 
-	// RemoteAddrCandidates are the confirmed address candidates.
-	// They accumulate after connection establishment.
-	RemoteAddrCandidates() []*netip.AddrPort
-
 	// RemoteAddr is the actual connection endpoint, among RemoteAddrCandidates.
-	RemoteAddr() *netip.AddrPort
+	RemoteAddr() netip.AddrPort
 
 	// Sends ahmp messages. Encoding details are defined in ahmp package.
+	// Warning: Send() is not thread safe.
 	Send(any) error
 
 	Close() error
