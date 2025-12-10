@@ -3,19 +3,37 @@ package ann
 import (
 	"context"
 	"net/netip"
+
+	"github.com/fxamacker/cbor/v2"
+	"github.com/kadmila/Abyss-Browser/abyss_core/sec"
+	"github.com/quic-go/quic-go"
 )
+
+// AuthenticatedConnection is a single QUIC connection
+// that completed abyss handshake.
+// It is passed to PeerConstructor.
+type AuthenticatedConnection struct {
+	identity     *sec.AbyssPeerIdentity
+	is_inbound   bool
+	connection   quic.Connection
+	ahmp_encoder *cbor.Encoder
+	ahmp_decoder *cbor.Decoder
+}
 
 // PeerConstructor handles appended peer/error, and writes to BackLog.
 // When BackLog is full, Append() and AppendError() will block.
 type PeerConstructor struct {
-	BackLog chan *AbyssPeer
+	BackLog chan BackLogEntry
+}
 
-	authenticated_backlog chan *AuthenticatedConnection
+type BackLogEntry struct {
+	peer *AbyssPeer
+	err  error
 }
 
 func NewPeerConstructor() *PeerConstructor {
 	return &PeerConstructor{
-		authenticated_backlog: make(chan *AuthenticatedConnection, 128),
+		BackLog: make(chan BackLogEntry, 128),
 	}
 }
 
@@ -26,7 +44,10 @@ func (c *PeerConstructor) Append(ctx context.Context, connection *AuthenticatedC
 }
 
 func (c *PeerConstructor) AppendError(addr netip.AddrPort, is_dialing bool, err error) {
-
+	c.BackLog <- BackLogEntry{
+		peer: nil,
+		err:  err,
+	}
 }
 
 // consumePendingInboundOrRegisterOutbound returns (completed_connection, ok, inbound_wait, redundant)

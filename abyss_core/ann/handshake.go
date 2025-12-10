@@ -1,24 +1,10 @@
 package ann
 
-import (
-	"github.com/fxamacker/cbor/v2"
-	"github.com/kadmila/Abyss-Browser/abyss_core/sec"
-	"github.com/quic-go/quic-go"
-)
-
 // type InboundConnection struct {
 // 	conn         quic.Connection
 // 	ahmp_encoder *cbor.Encoder
 // 	ahmp_decoder *cbor.Decoder
 // }
-
-type AuthenticatedConnection struct {
-	identity     *sec.AbyssPeerIdentity
-	is_inbound   bool
-	connection   quic.Connection
-	ahmp_encoder *cbor.Encoder
-	ahmp_decoder *cbor.Decoder
-}
 
 // type AbyssConnection struct {
 // 	inbound_connection   quic.Connection
@@ -29,13 +15,6 @@ type AuthenticatedConnection struct {
 // 	outbound_ahmp_encoder *cbor.Encoder
 // 	outbound_ahmp_decoder *cbor.Decoder
 // }
-
-const (
-	AbyssQuicRedundantConnection quic.ApplicationErrorCode = 1000
-	AbyssQuicAhmpStreamFail      quic.ApplicationErrorCode = 1001
-	AbyssQuicCryptoFail          quic.ApplicationErrorCode = 1002
-	AbyssQuicAuthenticationFail  quic.ApplicationErrorCode = 1002
-)
 
 // func (n *AbyssNode) handshakeService(ctx context.Context, done chan<- bool) {
 

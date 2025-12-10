@@ -33,10 +33,9 @@ func (e *DialError) Error() string {
 	}
 }
 
-// DialStatusMap helps avoiding redundant dials,
-// but it may still allow some redundancy.
-// TODO: known peer information expiration.
-type DialStatusMap struct {
+// DialInfoMap provides peer identity and helps avoiding
+// redundant dials, but it may still allow some redundancy.
+type DialInfoMap struct {
 	mtx sync.Mutex
 
 	known   map[string]*sec.AbyssPeerIdentity
@@ -44,15 +43,15 @@ type DialStatusMap struct {
 	dialed  map[string][]netip.Addr
 }
 
-func MakeDialStatusMap() DialStatusMap {
-	return DialStatusMap{
+func MakeDialInfoMap() DialInfoMap {
+	return DialInfoMap{
 		known:   make(map[string]*sec.AbyssPeerIdentity),
 		waiting: make(map[string]*waiter.Waiter[*sec.AbyssPeerIdentity]),
 		dialed:  make(map[string][]netip.Addr),
 	}
 }
 
-func (m *DialStatusMap) UpdatePeerInformation(identity *sec.AbyssPeerIdentity) {
+func (m *DialInfoMap) UpdatePeerInformation(identity *sec.AbyssPeerIdentity) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -71,14 +70,14 @@ func (m *DialStatusMap) UpdatePeerInformation(identity *sec.AbyssPeerIdentity) {
 	delete(m.dialed, identity.ID())
 }
 
-func (m *DialStatusMap) Remove(id string) {
+func (m *DialInfoMap) Remove(id string) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
 	delete(m.known, id)
 }
 
-func (m *DialStatusMap) CleaupWaiter() {
+func (m *DialInfoMap) CleaupWaiter() {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -89,7 +88,7 @@ func (m *DialStatusMap) CleaupWaiter() {
 	}
 }
 
-func (m *DialStatusMap) Get(ctx context.Context, id string) (*sec.AbyssPeerIdentity, error) {
+func (m *DialInfoMap) Get(ctx context.Context, id string) (*sec.AbyssPeerIdentity, error) {
 	var identity *sec.AbyssPeerIdentity
 	var is_known bool
 	var identity_waiter *waiter.Waiter[*sec.AbyssPeerIdentity]
@@ -138,7 +137,7 @@ func (m *DialStatusMap) Get(ctx context.Context, id string) (*sec.AbyssPeerIdent
 // or the peer id is unknown.
 // As there is no occasion where a node binds to multiple ports in same host,
 // we only compare IP addresses.
-func (m *DialStatusMap) AskDialingPermissionAndGetIdentity(id string, addr netip.Addr) (*sec.AbyssPeerIdentity, *DialError) {
+func (m *DialInfoMap) AskDialingPermissionAndGetIdentity(id string, addr netip.Addr) (*sec.AbyssPeerIdentity, *DialError) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -162,7 +161,7 @@ func (m *DialStatusMap) AskDialingPermissionAndGetIdentity(id string, addr netip
 }
 
 // ReportDialTermination removes entry from m.dialed map, allowing retry.
-func (m *DialStatusMap) ReportDialTermination(id string, addr netip.Addr) {
+func (m *DialInfoMap) ReportDialTermination(id string, addr netip.Addr) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 

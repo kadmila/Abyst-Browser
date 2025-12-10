@@ -37,7 +37,7 @@ type AbyssNode struct {
 	service_ctx        context.Context
 	service_cancelfunc context.CancelFunc
 
-	dial_stats         DialStatusMap
+	dial_stats         DialInfoMap
 	verified_tls_certs *sec.VerifiedTlsCertMap
 
 	peer_ctor *PeerConstructor
@@ -68,7 +68,7 @@ func NewAbyssNode(root_private_key sec.PrivateKey) (*AbyssNode, error) {
 		service_ctx:        dial_ctx,
 		service_cancelfunc: dial_cancelfunc,
 
-		dial_stats:         MakeDialStatusMap(),
+		dial_stats:         MakeDialInfoMap(),
 		verified_tls_certs: sec.NewVerifiedTlsCertMap(),
 	}, nil
 }
@@ -393,18 +393,19 @@ func (n *AbyssNode) Accept(ctx context.Context) (*AbyssPeer, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case new_peer, ok := <-n.peer_ctor.BackLog:
-		if !ok {
-			return nil, errors.New("AbyssNode closed")
-		}
-		return new_peer, nil
+	case backlog_entry := <-n.peer_ctor.BackLog:
+		return backlog_entry.peer, backlog_entry.err
 	}
 }
 
 // Close gracefully closes AbyssNode.
-// * Issue: Close() does not return when backlog is full.
+// * Issue: Close() may not return when backlog is full.
 // This is because when backlog is full, backlog appending call blocks,
 // and the connection handling goroutines cannot terminate.
+// 1. cancel context
+// 2. wait for accepter to terminate
+// 3. consume backlog until all goroutines terminate
+// 4. signal Serve loop
 func (n *AbyssNode) Close() error {
 	n.service_cancelfunc()
 	return nil
