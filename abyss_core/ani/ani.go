@@ -80,9 +80,14 @@ type IAbyssPeer interface {
 	// RemoteAddr is the actual connection endpoint, among RemoteAddrCandidates.
 	RemoteAddr() netip.AddrPort
 
-	// Sends ahmp messages. Encoding details are defined in ahmp package.
-	// Warning: Send() is not thread safe.
+	// Send and Recv exchange ahmp messages. Encoding details are defined in ahmp package.
+	// Warning: Nither of them are thread safe, but they are mutually thread-safe (isolated).
 	Send(any) error
+	Recv(any) error
+
+	// Context returns a context that is cancelled when the connection dies.
+	// This is directly exposed from quic-go.
+	Context() context.Context
 
 	Close() error
 }

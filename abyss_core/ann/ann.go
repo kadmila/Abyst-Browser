@@ -32,6 +32,7 @@ type AbyssNode struct {
 	*sec.TLSIdentity
 
 	udpConn               *net.UDPConn
+	testConn              *DelayConn // debug
 	transport             *quic.Transport
 	listener              *quic.Listener
 	local_addr_candidates []netip.AddrPort
@@ -63,6 +64,7 @@ func NewAbyssNode(root_private_key sec.PrivateKey) (*AbyssNode, error) {
 		TLSIdentity:     tls_identity,
 
 		udpConn:               nil,
+		testConn:              nil,
 		transport:             nil,
 		listener:              nil,
 		local_addr_candidates: make([]netip.AddrPort, 0),
@@ -92,7 +94,13 @@ func (n *AbyssNode) Listen() error {
 		return err
 	}
 
-	n.transport = &quic.Transport{Conn: n.udpConn}
+	// debug tool
+	n.testConn = NewDelayConn(n.udpConn, time.Millisecond*10, time.Millisecond*10)
+	n.transport = &quic.Transport{Conn: n.testConn}
+	// or
+	// n.transport = &quic.Transport{Conn: n.udpConn}
+	// normal
+
 	n.listener, err = n.transport.Listen(n.NewServerTlsConf(n.verified_tls_certs), newQuicConfig())
 	if err != nil {
 		return err

@@ -1,6 +1,9 @@
 package ann
 
-import "net/netip"
+import (
+	"context"
+	"net/netip"
+)
 
 type AbyssPeer struct {
 	AuthenticatedConnection
@@ -22,6 +25,12 @@ func (p *AbyssPeer) RemoteAddr() netip.AddrPort {
 
 func (p *AbyssPeer) Send(v any) error {
 	return p.ahmp_encoder.Encode(v)
+}
+func (p *AbyssPeer) Recv(v any) error {
+	return p.ahmp_decoder.Decode(v)
+}
+func (p *AbyssPeer) Context() context.Context {
+	return p.connection.Context()
 }
 
 func (p *AbyssPeer) Close() error {

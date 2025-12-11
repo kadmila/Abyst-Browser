@@ -3,6 +3,7 @@ package ann_test
 import (
 	"context"
 	"errors"
+	"math/rand/v2"
 	"testing"
 	"time"
 
@@ -176,5 +177,96 @@ func TestNewAbyssNode(t *testing.T) {
 	err = <-node_B_done
 	if !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
+	}
+}
+
+func TestReconnect(t *testing.T) {
+	root_key_A, _ := sec.NewRootPrivateKey()
+	node_A, _ := ann.NewAbyssNode(root_key_A)
+	node_A.Listen()
+	go node_A.Serve()
+
+	root_key_B, _ := sec.NewRootPrivateKey()
+	node_B, _ := ann.NewAbyssNode(root_key_B)
+	node_B.Listen()
+	go node_B.Serve()
+
+	node_A.AppendKnownPeer(node_B.RootCertificate(), node_B.HandshakeKeyCertificate())
+	node_B.AppendKnownPeer(node_A.RootCertificate(), node_A.HandshakeKeyCertificate())
+
+	one_cycle := func() {
+		ctx, ctxcancel := context.WithTimeout(context.Background(), time.Second)
+		defer ctxcancel()
+
+		for _, v := range node_B.LocalAddrCandidates() {
+			node_A.Dial(node_B.ID(), v)
+		}
+		for _, v := range node_A.LocalAddrCandidates() {
+			node_B.Dial(node_A.ID(), v)
+		}
+
+		var peer_A_B ani.IAbyssPeer
+		for {
+			peer, err := node_A.Accept(ctx)
+			if err != nil {
+				if errors.Is(err, context.DeadlineExceeded) {
+					t.Fatal("accept timeout")
+				}
+				continue
+			}
+			peer_A_B = peer
+			break
+		}
+		var peer_B_A ani.IAbyssPeer
+		for {
+			peer, err := node_B.Accept(ctx)
+			if err != nil {
+				if errors.Is(err, context.DeadlineExceeded) {
+					t.Fatal("accept timeout")
+				}
+				continue
+			}
+			peer_B_A = peer
+			break
+		}
+
+		v_sent := rand.Int()
+		peer_A_B.Send(v_sent)
+		var v_rcvd int
+		peer_B_A.Recv(&v_rcvd)
+		if v_rcvd != v_sent {
+			t.Fatal("communication fail")
+		}
+
+		// drain accept queue
+		done_ch := make(chan bool, 2)
+		go func() {
+			for {
+				_, err := node_A.Accept(ctx)
+				if err != nil && errors.Is(err, context.DeadlineExceeded) {
+					break
+				}
+			}
+			done_ch <- true
+		}()
+		go func() {
+			for {
+				_, err := node_B.Accept(ctx)
+				if err != nil && errors.Is(err, context.DeadlineExceeded) {
+					break
+				}
+			}
+			done_ch <- true
+		}()
+		<-done_ch
+		<-done_ch
+
+		peer_A_B.Close()
+		peer_B_A.Close()
+	}
+
+	for range 5 {
+		one_cycle()
+		<-time.After(time.Millisecond * 10)
 	}
 }
