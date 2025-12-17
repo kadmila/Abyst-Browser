@@ -72,7 +72,7 @@ func (s *PeerWorldSessionState) Clear() {
 	s.sjnc = 0
 }
 
-type ANDWorld struct {
+type World struct {
 	o *AND //origin (debug purpose)
 
 	local     string //local hash
@@ -86,7 +86,7 @@ type ANDWorld struct {
 	ech chan IANDEvent
 }
 
-func (w *ANDWorld) CheckSanity() {
+func (w *World) CheckSanity() {
 	jc := 0
 	for peer_id, peer := range w.peers {
 		if peer_id == w.local {
@@ -115,8 +115,8 @@ func (w *ANDWorld) CheckSanity() {
 	}
 }
 
-func NewWorldOpen(origin *AND, local_hash string, local_session_id uuid.UUID, world_url string, connected_members map[string]PeerWithLocation, event_ch chan IANDEvent) *ANDWorld {
-	result := &ANDWorld{
+func NewWorldOpen(origin *AND, local_hash string, local_session_id uuid.UUID, world_url string, connected_members map[string]PeerWithLocation, event_ch chan IANDEvent) *World {
+	result := &World{
 		o:         origin,
 		local:     local_hash,
 		lsid:      local_session_id,
@@ -148,8 +148,8 @@ func NewWorldOpen(origin *AND, local_hash string, local_session_id uuid.UUID, wo
 	return result
 }
 
-func NewWorldJoin(origin *AND, local_hash string, local_session_id uuid.UUID, target *aurl.AURL, connected_members map[string]PeerWithLocation, event_ch chan IANDEvent) (*ANDWorld, error) {
-	result := &ANDWorld{
+func NewWorldJoin(origin *AND, local_hash string, local_session_id uuid.UUID, target *aurl.AURL, connected_members map[string]PeerWithLocation, event_ch chan IANDEvent) (*World, error) {
+	result := &World{
 		o:         origin,
 		local:     local_hash,
 		lsid:      local_session_id,
@@ -182,7 +182,7 @@ func NewWorldJoin(origin *AND, local_hash string, local_session_id uuid.UUID, ta
 	return result, nil
 }
 
-func (w *ANDWorld) ClearStates(peer_id string, info *PeerWorldSessionState, message string) {
+func (w *World) ClearStates(peer_id string, info *PeerWorldSessionState, message string) {
 	switch info.state {
 	case WS_DC_JNI:
 		delete(w.peers, peer_id)
@@ -215,7 +215,7 @@ func (w *ANDWorld) ClearStates(peer_id string, info *PeerWorldSessionState, mess
 }
 
 // TryUpdateSessionID returns (old session ID, success). old session ID is nil if not updated
-func (w *ANDWorld) TryUpdateSessionID(s *PeerWorldSessionState, session_id uuid.UUID, timestamp time.Time) bool {
+func (w *World) TryUpdateSessionID(s *PeerWorldSessionState, session_id uuid.UUID, timestamp time.Time) bool {
 	if s.TimeStamp.Before(timestamp) {
 		w.ClearStates(s.Peer.ID(), s, "session id update failure")
 		s.SessionID = session_id
@@ -225,7 +225,7 @@ func (w *ANDWorld) TryUpdateSessionID(s *PeerWorldSessionState, session_id uuid.
 		return false
 	}
 }
-func (w *ANDWorld) IsProperMemberOrReset(info *PeerWorldSessionState, peer_session ANDPeerSession) bool {
+func (w *World) IsProperMemberOrReset(info *PeerWorldSessionState, peer_session ANDPeerSession) bool {
 	switch info.state {
 	case WS_DC_JNI:
 		panic("not connected")
@@ -240,7 +240,7 @@ func (w *ANDWorld) IsProperMemberOrReset(info *PeerWorldSessionState, peer_sessi
 	return false
 }
 
-func (w *ANDWorld) PeerConnected(peer_loc PeerWithLocation) {
+func (w *World) PeerConnected(peer_loc PeerWithLocation) {
 	info, ok := w.peers[peer_loc.Peer.ID()]
 	if ok { // known peer
 		w.o.stat.W(4)
@@ -270,7 +270,7 @@ func (w *ANDWorld) PeerConnected(peer_loc PeerWithLocation) {
 		state: WS_CC,
 	}
 }
-func (w *ANDWorld) JN(peer_session ANDPeerSession, timestamp time.Time) {
+func (w *World) JN(peer_session ANDPeerSession, timestamp time.Time) {
 	w.o.stat.JN_RX++
 
 	info := w.peers[peer_session.Peer.ID()]
@@ -311,7 +311,7 @@ func (w *ANDWorld) JN(peer_session ANDPeerSession, timestamp time.Time) {
 		panic("and invalid state: JN")
 	}
 }
-func (w *ANDWorld) JOK(peer_session ANDPeerSession, timestamp time.Time, world_url string, member_infos []ANDFullPeerSessionInfo) {
+func (w *World) JOK(peer_session ANDPeerSession, timestamp time.Time, world_url string, member_infos []ANDFullPeerSessionInfo) {
 	w.o.stat.JOK_RX++
 
 	sender_id := peer_session.Peer.ID()
@@ -346,7 +346,7 @@ func (w *ANDWorld) JOK(peer_session ANDPeerSession, timestamp time.Time, world_u
 		w.JNI_MEMS(sender_id, mem_info)
 	}
 }
-func (w *ANDWorld) JDN(peer ani.IAbyssPeer, code int, message string) { //no branch number here... :(
+func (w *World) JDN(peer ani.IAbyssPeer, code int, message string) { //no branch number here... :(
 	w.o.stat.JDN_RX++
 
 	info := w.peers[peer.ID()]
@@ -367,7 +367,7 @@ func (w *ANDWorld) JDN(peer ani.IAbyssPeer, code int, message string) { //no bra
 	info.Clear()
 }
 
-func (w *ANDWorld) JNI(peer_session ANDPeerSession, member_info ANDFullPeerSessionInfo) {
+func (w *World) JNI(peer_session ANDPeerSession, member_info ANDFullPeerSessionInfo) {
 	w.o.stat.JNI_RX++
 
 	sender_id := peer_session.Peer.ID()
@@ -383,7 +383,7 @@ func (w *ANDWorld) JNI(peer_session ANDPeerSession, member_info ANDFullPeerSessi
 
 	w.JNI_MEMS(sender_id, member_info)
 }
-func (w *ANDWorld) JNI_MEMS(sender_id string, mem_info ANDFullPeerSessionInfo) {
+func (w *World) JNI_MEMS(sender_id string, mem_info ANDFullPeerSessionInfo) {
 	peer_id := mem_info.PeerID
 	if peer_id == w.local {
 		w.o.stat.W(19)
@@ -483,7 +483,7 @@ func (w *ANDWorld) JNI_MEMS(sender_id string, mem_info ANDFullPeerSessionInfo) {
 		panic("and invalid state: JNI_MEMS")
 	}
 }
-func (w *ANDWorld) MEM(peer_session ANDPeerSession, timestamp time.Time) {
+func (w *World) MEM(peer_session ANDPeerSession, timestamp time.Time) {
 	w.o.stat.MEM_RX++
 
 	info := w.peers[peer_session.Peer.ID()]
@@ -545,7 +545,7 @@ func (w *ANDWorld) MEM(peer_session ANDPeerSession, timestamp time.Time) {
 		panic("and: impossible disconnected state")
 	}
 }
-func (w *ANDWorld) SJN(peer_session ANDPeerSession, member_infos []ANDPeerSessionIdentity) {
+func (w *World) SJN(peer_session ANDPeerSession, member_infos []ANDPeerSessionIdentity) {
 	w.o.stat.SJN_RX++
 
 	info := w.peers[peer_session.Peer.ID()]
@@ -560,7 +560,7 @@ func (w *ANDWorld) SJN(peer_session ANDPeerSession, member_infos []ANDPeerSessio
 		w.SJN_MEMS(peer_session, mem_info)
 	}
 }
-func (w *ANDWorld) SJN_MEMS(origin ANDPeerSession, mem_info ANDPeerSessionIdentity) {
+func (w *World) SJN_MEMS(origin ANDPeerSession, mem_info ANDPeerSessionIdentity) {
 	if mem_info.PeerID == w.local {
 		w.o.stat.W(42)
 		return
@@ -576,7 +576,7 @@ func (w *ANDWorld) SJN_MEMS(origin ANDPeerSession, mem_info ANDPeerSessionIdenti
 	w.o.stat.CRR_TX++
 	SendCRR(origin.Peer, w.lsid, origin.SessionID, []ANDPeerSessionIdentity{mem_info})
 }
-func (w *ANDWorld) CRR(peer_session ANDPeerSession, member_infos []ANDPeerSessionIdentity) {
+func (w *World) CRR(peer_session ANDPeerSession, member_infos []ANDPeerSessionIdentity) {
 	w.o.stat.CRR_RX++
 
 	info := w.peers[peer_session.Peer.ID()]
@@ -591,7 +591,7 @@ func (w *ANDWorld) CRR(peer_session ANDPeerSession, member_infos []ANDPeerSessio
 		w.CRR_MEMS(info, mem_info)
 	}
 }
-func (w *ANDWorld) CRR_MEMS(origin *PeerWorldSessionState, mem_info ANDPeerSessionIdentity) {
+func (w *World) CRR_MEMS(origin *PeerWorldSessionState, mem_info ANDPeerSessionIdentity) {
 	if mem_info.PeerID == w.local {
 		w.o.stat.W(46)
 		return
@@ -607,7 +607,7 @@ func (w *ANDWorld) CRR_MEMS(origin *PeerWorldSessionState, mem_info ANDPeerSessi
 		SendJNI(info.Peer, w.lsid, info.SessionID, origin.PeerWorldSession)
 	}
 }
-func (w *ANDWorld) SOA(peer_session ANDPeerSession, objects []ObjectInfo) {
+func (w *World) SOA(peer_session ANDPeerSession, objects []ObjectInfo) {
 	w.o.stat.SOA_RX++
 
 	info := w.peers[peer_session.Peer.ID()]
@@ -622,17 +622,16 @@ func (w *ANDWorld) SOA(peer_session ANDPeerSession, objects []ObjectInfo) {
 	case WS_MEM:
 		w.o.stat.W(49)
 
-		w.ech <- IANDEvent{
-			Type:           ANDObjectAppend,
-			LocalSessionID: w.lsid,
+		w.ech <- EANDObjectAppend{
+			SessionID:      w.lsid,
 			ANDPeerSession: peer_session,
-			Object:         objects,
+			Objects:        objects,
 		}
 	default:
 		w.o.stat.W(50)
 	}
 }
-func (w *ANDWorld) SOD(peer_session ANDPeerSession, objectIDs []uuid.UUID) {
+func (w *World) SOD(peer_session ANDPeerSession, objectIDs []uuid.UUID) {
 	w.o.stat.SOD_RX++
 
 	info := w.peers[peer_session.Peer.ID()]
@@ -640,39 +639,36 @@ func (w *ANDWorld) SOD(peer_session ANDPeerSession, objectIDs []uuid.UUID) {
 		w.o.stat.W(51)
 
 		w.o.stat.RST_TX++
-		peer_session.Peer.SendRST(w.lsid, peer_session.SessionID, "SOA::sessionID mismatch")
+		SendRST(peer_session.Peer, w.lsid, peer_session.SessionID, "SOA::sessionID mismatch")
 		return
 	}
 	switch info.state {
 	case WS_MEM:
 		w.o.stat.W(52)
 
-		w.ech <- IANDEvent{
-			Type:           ANDObjectDelete,
-			LocalSessionID: w.lsid,
+		w.ech <- EANDObjectDelete{
+			SessionID:      w.lsid,
 			ANDPeerSession: peer_session,
-			Object:         objectIDs,
+			ObjectIDs:      objectIDs,
 		}
 	default:
 		w.o.stat.W(53)
 	}
 }
-func (w *ANDWorld) RST(peer_session ANDPeerSession) {
+func (w *World) RST(peer_session ANDPeerSession) {
 	w.o.stat.RST_RX++
 
 	info := w.peers[peer_session.Peer.ID()]
 	w.ClearStates(info.Peer.ID(), info, "RST received")
 }
 
-func (w *ANDWorld) AcceptSession(peer_session ANDPeerSession) {
+func (w *World) AcceptSession(peer_session ANDPeerSession) {
 	info, ok := w.peers[peer_session.Peer.ID()]
 	if !ok {
 		w.o.stat.W(54)
 		return
 	}
 	switch info.state {
-	case WS_DC_JT:
-		panic("and invalid state: AcceptSession")
 	case WS_DC_JNI:
 		w.o.stat.W(55)
 
@@ -701,14 +697,18 @@ func (w *ANDWorld) AcceptSession(peer_session ANDPeerSession) {
 			w.o.stat.W(60)
 
 			member_infos = append(member_infos, PeerWorldSession{
-				ANDPeerSession: p.ANDPeerSession,
-				TimeStamp:      p.TimeStamp,
+				PeerWithLocation: PeerWithLocation{
+					Peer:              p.Peer,
+					AddressCandidates: p.AddressCandidates,
+				},
+				SessionID: p.SessionID,
+				TimeStamp: p.TimeStamp,
 			})
 			w.o.stat.JNI_TX++
-			p.Peer.SendJNI(w.lsid, p.SessionID, info.PeerWorldSession)
+			SendJNI(p.Peer, w.lsid, p.SessionID, info.PeerWorldSession)
 		}
 		w.o.stat.JOK_TX++
-		info.Peer.SendJOK(w.lsid, info.SessionID, w.timestamp, w.wurl, member_infos)
+		SendJOK(info.Peer, w.lsid, info.SessionID, w.timestamp, w.wurl, member_infos)
 		info.state = WS_TMEM
 	case WS_RMEM_NJNI:
 		w.o.stat.W(61)
@@ -725,7 +725,7 @@ func (w *ANDWorld) AcceptSession(peer_session ANDPeerSession) {
 		w.o.stat.W(64)
 
 		w.o.stat.MEM_TX++
-		info.Peer.SendMEM(w.lsid, info.SessionID, w.timestamp)
+		SendMEM(info.Peer, w.lsid, info.SessionID, w.timestamp)
 		info.state = WS_TMEM
 	case WS_RMEM:
 		w.o.stat.W(65)
@@ -738,11 +738,10 @@ func (w *ANDWorld) AcceptSession(peer_session ANDPeerSession) {
 		w.o.stat.W(67)
 
 		w.o.stat.MEM_TX++
-		info.Peer.SendMEM(w.lsid, info.SessionID, w.timestamp)
-		w.ech <- IANDEvent{
-			Type:           ANDSessionReady,
-			LocalSessionID: w.lsid,
-			ANDPeerSession: info.ANDPeerSession,
+		SendMEM(info.Peer, w.lsid, info.SessionID, w.timestamp)
+		w.ech <- EANDSessionReady{
+			SessionID:      w.lsid,
+			ANDPeerSession: info.ANDPeerSession(),
 		}
 		info.state = WS_MEM
 	case WS_TMEM:
@@ -757,7 +756,7 @@ func (w *ANDWorld) AcceptSession(peer_session ANDPeerSession) {
 		w.o.stat.W(70)
 	}
 }
-func (w *ANDWorld) DeclineSession(peer_session ANDPeerSession, code int, message string) {
+func (w *World) DeclineSession(peer_session ANDPeerSession, code int, message string) {
 	info, ok := w.peers[peer_session.Peer.ID()]
 	if !ok {
 		w.o.stat.W(71)
@@ -772,7 +771,7 @@ func (w *ANDWorld) DeclineSession(peer_session ANDPeerSession, code int, message
 	w.o.stat.W(73)
 
 }
-func (w *ANDWorld) TimerExpire() {
+func (w *World) TimerExpire() {
 	sjn_mem := make([]ANDPeerSessionIdentity, 0)
 	for _, info := range w.peers {
 		if info.state != WS_MEM ||
@@ -803,22 +802,21 @@ func (w *ANDWorld) TimerExpire() {
 			w.o.stat.W(77)
 
 			w.o.stat.SJN_TX++
-			info.Peer.SendSJN(w.lsid, info.SessionID, sjn_mem)
+			SendSJN(info.Peer, w.lsid, info.SessionID, sjn_mem)
 		}
 	}
 
-	w.ech <- IANDEvent{
-		Type:           ANDTimerRequest,
-		LocalSessionID: w.lsid,
-		Value:          300 + rand.Intn(300*(member_count+1)),
+	w.ech <- EANDTimerRequest{
+		SessionID: w.lsid,
+		Duration:  time.Millisecond * time.Duration(300+rand.Intn(300*(member_count+1))),
 	}
 }
 
-func (w *ANDWorld) RemovePeer(peer ani.IAbyssPeer) {
+func (w *World) RemovePeer(peer ani.IAbyssPeer) {
 	w.ClearStates(peer.ID(), w.peers[peer.ID()], "")
 	delete(w.peers, peer.ID())
 }
-func (w *ANDWorld) Close() {
+func (w *World) Close() {
 	for _, info := range w.peers {
 		switch info.state {
 		case WS_CC:
@@ -827,37 +825,34 @@ func (w *ANDWorld) Close() {
 			w.o.stat.W(78)
 
 			w.o.stat.RST_TX++
-			info.Peer.SendRST(w.lsid, info.SessionID, "Close")
+			SendRST(info.Peer, w.lsid, info.SessionID, "Close")
 
-			w.ech <- IANDEvent{
-				Type:           ANDJoinFail,
-				LocalSessionID: w.lsid,
-				Text:           JNM_CANCELED,
-				Value:          JNC_CANCELED,
+			w.ech <- EANDJoinFail{
+				SessionID: w.lsid,
+				Code:      JNC_CANCELED,
+				Message:   JNM_CANCELED,
 			}
 		case WS_JN, WS_RMEM_NJNI, WS_JNI, WS_RMEM, WS_TMEM:
 			w.o.stat.W(79)
 
 			w.o.stat.RST_TX++
-			info.Peer.SendRST(w.lsid, info.SessionID, "Close")
+			SendRST(info.Peer, w.lsid, info.SessionID, "Close")
 
 		case WS_MEM:
 			w.o.stat.W(80)
 
 			w.o.stat.RST_TX++
-			info.Peer.SendRST(w.lsid, info.SessionID, "Close")
+			SendRST(info.Peer, w.lsid, info.SessionID, "Close")
 
-			w.ech <- IANDEvent{
-				Type:           ANDSessionClose,
-				LocalSessionID: w.lsid,
-				ANDPeerSession: info.ANDPeerSession,
+			w.ech <- EANDSessionClose{
+				SessionID:      w.lsid,
+				ANDPeerSession: info.ANDPeerSession(),
 			}
 		}
 	}
 	w.o.stat.W(81)
 
-	w.ech <- IANDEvent{
-		Type:           ANDWorldLeave,
-		LocalSessionID: w.lsid,
+	w.ech <- EANDWorldLeave{
+		SessionID: w.lsid,
 	}
 }

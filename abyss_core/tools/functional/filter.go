@@ -8,6 +8,8 @@ func Filter[T any, Q any](s []T, f func(T) Q) []Q {
 	return result
 }
 
+// Filter_ok takes an array and a function that returns (result, ok).
+// The result values with ok == true is concatenated and returned.
 func Filter_ok[T any, Q any](s []T, f func(T) (Q, bool)) []Q {
 	result := make([]Q, 0, len(s))
 	for _, e := range s {

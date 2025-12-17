@@ -1,7 +1,14 @@
+// and (Abyss Neighbor Discovery) algorithm defines worlds in abyss network.
+// AND is the algorithm provider
+// A World is created by OpenWorld or JoinWorld call.
+// Within a world, algorithm pushes events into the shared AND event queue.
+// World algorithm may request a peer through event.
+// On host-side event consumer prvides peer (by dialing or just giving connected peer).
+// When a peer closes, the host calls PeerClose() to each world that references the peer.
+// By this way, the host has full control over peer references.
 package and
 
 import (
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,24 +19,12 @@ import (
 )
 
 type AND struct {
-	mtx sync.Mutex
-
 	eventCh chan IANDEvent
-
-	local_hash string
-
-	peers  map[string]PeerWithLocation //id hash - peer
-	worlds map[uuid.UUID]*ANDWorld     //local session id - world
-
-	stat ANDStatistics
 }
 
 func NewAND(local_hash string) *AND {
 	return &AND{
-		eventCh:    make(chan IANDEvent, 4096),
-		local_hash: local_hash,
-		peers:      make(map[string]PeerWithLocation),
-		worlds:     make(map[uuid.UUID]*ANDWorld),
+		eventCh: make(chan IANDEvent, 1024),
 	}
 }
 
@@ -37,25 +32,7 @@ func (a *AND) EventChannel() <-chan IANDEvent {
 	return a.eventCh
 }
 
-func (a *AND) PeerConnected(peer_loc PeerWithLocation) int {
-	//debug
-	watchdog.Info("appCall::PeerConnected " + peer_loc.Peer.ID())
-
-	a.mtx.Lock()
-	defer a.mtx.Unlock()
-
-	a.stat.B(0)
-
-	a.peers[peer_loc.Peer.ID()] = peer_loc
-	for _, world := range a.worlds {
-		a.stat.B(1)
-		world.PeerConnected(peer_loc)
-	}
-	return 0
-}
-
 func (a *AND) PeerClose(peer ani.IAbyssPeer) int {
-	//debug
 	watchdog.Info("appCall::PeerClose " + peer.ID())
 
 	a.mtx.Lock()
@@ -68,11 +45,14 @@ func (a *AND) PeerClose(peer ani.IAbyssPeer) int {
 		world.RemovePeer(peer)
 	}
 	delete(a.peers, peer.ID())
+	// TODO: drain eventCh and remove all peer-related events.
+	a.eventCh <- EANDPeerClose{
+		Peer: peer,
+	}
 	return 0
 }
 
 func (a *AND) OpenWorld(local_session_id uuid.UUID, world_url string) int {
-	//debug
 	watchdog.Info("appCall::OpenWorld " + local_session_id.String())
 
 	a.mtx.Lock()
@@ -86,7 +66,6 @@ func (a *AND) OpenWorld(local_session_id uuid.UUID, world_url string) int {
 }
 
 func (a *AND) JoinWorld(local_session_id uuid.UUID, abyss_url *aurl.AURL) int {
-	//debug
 	watchdog.Info("appCall::JoinWorld " + local_session_id.String() + " " + abyss_url.Hash)
 
 	a.mtx.Lock()
@@ -103,7 +82,6 @@ func (a *AND) JoinWorld(local_session_id uuid.UUID, abyss_url *aurl.AURL) int {
 }
 
 func (a *AND) AcceptSession(local_session_id uuid.UUID, peer_session ANDPeerSession) int {
-	//debug
 	watchdog.Info("appCall::AcceptSession " + local_session_id.String() + " " + peer_session.SessionID.String())
 
 	a.mtx.Lock()
@@ -121,7 +99,6 @@ func (a *AND) AcceptSession(local_session_id uuid.UUID, peer_session ANDPeerSess
 }
 
 func (a *AND) DeclineSession(local_session_id uuid.UUID, peer_session ANDPeerSession, code int, message string) int {
-	//debug
 	watchdog.Info("appCall::DeclineSession " + local_session_id.String() + " " + peer_session.SessionID.String())
 
 	a.mtx.Lock()
@@ -139,7 +116,6 @@ func (a *AND) DeclineSession(local_session_id uuid.UUID, peer_session ANDPeerSes
 }
 
 func (a *AND) CloseWorld(local_session_id uuid.UUID) int {
-	//debug
 	watchdog.Info("appCall::CloseWorld " + local_session_id.String())
 
 	a.mtx.Lock()
