@@ -41,6 +41,12 @@ const (
 
 // other independent protocols: add 0x1000
 
+// Abyss Utility
+const (
+	AU_PING_TX_T = iota + 0x1000
+	AU_PING_RX_T
+)
+
 func (t AHMPMsgType) String() string {
 	switch t {
 	case JN_T:

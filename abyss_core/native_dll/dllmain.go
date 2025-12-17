@@ -26,7 +26,7 @@ import (
 
 	abyss_net "github.com/kadmila/Abyss-Browser/abyss_core/net_service"
 
-	abyss_and "github.com/kadmila/Abyss-Browser/abyss_core/and"
+	"github.com/kadmila/Abyss-Browser/abyss_core/and"
 
 	"github.com/kadmila/Abyss-Browser/abyss_core/aurl"
 
@@ -224,7 +224,7 @@ func NewHost(root_priv_key_pem_ptr *C.char, root_priv_key_pem_len C.int, h_path_
 
 	host := abyss_host.NewAbyssHost(
 		net_service,
-		abyss_and.NewAND(net_service.LocalIdentity().IDHash()),
+		and.NewAND(net_service.LocalIdentity().IDHash()),
 		path_resolver,
 	)
 	go host.ListenAndServe(context.Background())

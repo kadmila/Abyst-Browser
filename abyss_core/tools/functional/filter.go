@@ -31,6 +31,10 @@ func Filter_strict_ok[T any, Q any](s []T, f func(T) (Q, bool)) ([]Q, bool) {
 	return result, true
 }
 
+// Filter_until_err takes an array and a function that returns a result and an error,
+// tries to filter all entries, but stops if one call returns error.
+// Returns result, remnant (nil if success), error
+// When fails, the first entry of the remnant is the one which caused the error.
 func Filter_until_err[T any, Q any](s []T, f func(T) (Q, error)) ([]Q, []T, error) {
 	result := make([]Q, 0, len(s))
 	for i, e := range s {

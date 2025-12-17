@@ -1,11 +1,9 @@
-package ahmp
+package and
 
 import (
 	"time"
 
 	"github.com/google/uuid"
-
-	abyss "github.com/kadmila/Abyss-Browser/abyss_core/interfaces"
 )
 
 ///// AND
@@ -19,7 +17,7 @@ type JOK struct {
 	SenderSessionID uuid.UUID
 	RecverSessionID uuid.UUID
 	TimeStamp       time.Time
-	Neighbors       []abyss.ANDFullPeerSessionIdentity
+	Neighbors       []ANDFullPeerSessionInfo
 	Text            string
 }
 type JDN struct {
@@ -30,7 +28,7 @@ type JDN struct {
 type JNI struct {
 	SenderSessionID uuid.UUID
 	RecverSessionID uuid.UUID
-	Neighbor        abyss.ANDFullPeerSessionIdentity
+	Neighbor        ANDFullPeerSessionInfo
 }
 type MEM struct {
 	SenderSessionID uuid.UUID
@@ -40,12 +38,12 @@ type MEM struct {
 type SJN struct {
 	SenderSessionID uuid.UUID
 	RecverSessionID uuid.UUID
-	MemberInfos     []abyss.ANDPeerSessionIdentity
+	MemberInfos     []ANDPeerSessionIdentity
 }
 type CRR struct {
 	SenderSessionID uuid.UUID
 	RecverSessionID uuid.UUID
-	MemberInfos     []abyss.ANDPeerSessionIdentity
+	MemberInfos     []ANDPeerSessionIdentity
 }
 type RST struct {
 	SenderSessionID uuid.UUID //may nil.
@@ -56,7 +54,7 @@ type RST struct {
 type SOA struct {
 	SenderSessionID uuid.UUID
 	RecverSessionID uuid.UUID
-	Objects         []abyss.ObjectInfo
+	Objects         []ObjectInfo
 }
 type SOD struct {
 	SenderSessionID uuid.UUID
