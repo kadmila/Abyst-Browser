@@ -28,15 +28,45 @@ type ObjectInfo struct {
 type ANDSessionState int
 
 const (
-	WS_DC_JNI    ANDSessionState = iota + 1 //disconnected, JNI received
-	WS_CC                                   //connected, no info
-	WS_JT                                   //JN sent
-	WS_JN                                   //JN received
-	WS_RMEM_NJNI                            //MEM received, JNI not received
-	WS_JNI                                  //JNI received, MEM not received
-	WS_RMEM                                 //MEM received
-	WS_TMEM                                 //MEM sent
-	WS_MEM                                  //member
+	// WS_DC_JNI : disconnected, JNI received
+	// (X) Peer, is_session_requested
+	// (O) PeerID, SessionID, TimeStamp
+	WS_DC_JNI ANDSessionState = iota + 1
+
+	// from now on, PeerID, Peer, AddressCandidates are known.
+
+	// WS_CC : connected, no info. <<W_Joining>>
+	// (X) SessionID, TimeStamp, is_session_requested
+	WS_CC
+
+	// WS_JN : JN received
+	// (O) SessionID, TimeStamp, is_session_requested
+	WS_JN
+
+	// WS_RMEM_NJNI : MEM received, JNI not received. <<W_Joining>>
+	// (X) is_session_requested
+	// (O) SessionID, TimeStamp
+	WS_RMEM_NJNI
+
+	// WS_JNI : JNI received, MEM not received
+	// (X)
+	// (O) SessionID, TimeStamp is_session_requested
+	WS_JNI
+
+	// WS_RMEM : MEM received
+	// (X)
+	// (O) SessionID, TimeStamp, is_session_requested
+	WS_RMEM
+
+	// WS_TMEM : MEM sent
+	// (X)
+	// (O) SessionID, TimeStamp, is_session_requested
+	WS_TMEM
+
+	// WS_MEM : member
+	// (X)
+	// (O) SessionID, TimeStamp, is_session_requested
+	WS_MEM
 )
 
 func (s ANDSessionState) String() string {
@@ -45,8 +75,6 @@ func (s ANDSessionState) String() string {
 		return "DC_JNI"
 	case WS_CC:
 		return "CC"
-	case WS_JT:
-		return "JT"
 	case WS_JN:
 		return "JN"
 	case WS_RMEM_NJNI:
@@ -67,12 +95,12 @@ func (s ANDSessionState) String() string {
 // peerWorldSessionState represents the peer's state in world session lifecycle.
 // timestamp is used only for JNI.
 type peerWorldSessionState struct {
+	state                ANDSessionState
 	PeerID               string
 	Peer                 ani.IAbyssPeer   // this is nil if state is WS_DN_JNI
 	AddressCandidates    []netip.AddrPort // this is shared with ANDFullPeerSession
 	SessionID            uuid.UUID
 	TimeStamp            time.Time
-	state                ANDSessionState
 	is_session_requested bool // this is true if EANDSessionRequest was fired.
 	sjnp                 bool //is sjn suppressed
 	sjnc                 int  //sjn receive count

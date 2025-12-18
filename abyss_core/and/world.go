@@ -9,7 +9,16 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/kadmila/Abyss-Browser/abyss_core/ani"
+	"github.com/kadmila/Abyss-Browser/abyss_core/config"
 	"github.com/kadmila/Abyss-Browser/abyss_core/tools/functional"
+)
+
+type worldLifecycle int
+
+const (
+	W_Joining worldLifecycle = iota
+	W_Working
+	W_Closed
 )
 
 // World is a state machine for a world and its member/related peers.
@@ -20,23 +29,23 @@ type World struct {
 
 	lsid        uuid.UUID                         // local world session id
 	timestamp   time.Time                         // local world session creation timestamp
-	join_target ani.IAbyssPeer                    // (when constructed with Join) join target peer, turns null after firing EANDWorldEnter
+	join_target *peerWorldSessionState            // (when constructed with Join) join target peer, turns null after firing EANDWorldEnter
 	join_path   string                            // (when constructed with Join) world request path
 	url         string                            // (when constructed with Open, or Join accepted) environmental content URL.
 	entries     map[string]*peerWorldSessionState // key: id, value: peer states
-	is_alive    bool                              // must be initialized with true, becomes false after firing EANDWorldLeave
+	lifecycle   worldLifecycle                    // must be initialized with true, becomes false after firing EANDWorldLeave
 }
 
 func newWorld_Open(origin *AND, world_url string) *World {
 	result := &World{
-		o:         origin,
-		lsid:      uuid.New(),
-		timestamp: time.Now(),
-		join_id:   "",
-		join_path: "",
-		url:       world_url,
-		entries:   make(map[string]*peerWorldSessionState),
-		is_alive:  true,
+		o:           origin,
+		lsid:        uuid.New(),
+		timestamp:   time.Now(),
+		join_target: nil,
+		join_path:   "",
+		url:         world_url,
+		entries:     make(map[string]*peerWorldSessionState),
+		lifecycle:   W_Working,
 	}
 	result.o.eventCh <- &EANDWorldEnter{
 		World: result,
@@ -54,28 +63,207 @@ func newWorld_Join(origin *AND, target ani.IAbyssPeer, target_addrs []netip.Addr
 		o:         origin,
 		lsid:      uuid.New(),
 		timestamp: time.Now(),
-		join_id:   target.ID(),
+		join_target: &peerWorldSessionState{
+			PeerID:            target.ID(),
+			Peer:              target,
+			AddressCandidates: target_addrs,
+		},
 		join_path: path,
 		url:       "",
 		entries:   make(map[string]*peerWorldSessionState),
-		is_alive:  true,
+		lifecycle: W_Joining,
 	}
-	entry := &peerWorldSessionState{
-		PeerID:            target.ID(),
-		Peer:              target,
-		AddressCandidates: target_addrs,
-		state:             WS_JT,
-	}
-	result.entries[target.ID()] = entry
-	err := result.sendJN(entry)
+	err := result.sendJN(result.join_target)
 	if err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
+func (w *World) CheckSanity() {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+	if w.o == nil {
+		panic("world origin nil")
+	}
+	if w.lsid == uuid.Nil {
+		panic("world lsid nil")
+	}
+	if w.timestamp.Before(time.Now()) {
+		panic("invalid world timestamp")
+	}
+	switch w.lifecycle {
+	case W_Joining:
+		if w.join_target == nil {
+			panic("world join target nil")
+		}
+		if w.join_path == "" {
+			panic("world join path nil")
+		}
+		if w.url != "" {
+			panic("world url non-nil")
+		}
+		for id, entry := range w.entries {
+			if id == "" {
+				panic(entry.state.String() + " entry with nil id")
+			}
+			switch entry.state {
+			case WS_DC_JNI:
+				panic(entry.state.String() + " must not exist (no MEM)")
+			case WS_CC:
+				// expecting early MEM
+				if id != entry.PeerID || id != entry.Peer.ID() {
+					panic(entry.state.String() + " peer id mismatch")
+				}
+				if entry.SessionID != uuid.Nil {
+					panic(entry.state.String() + " must have nil session id")
+				}
+				if !entry.TimeStamp.Equal(time.Time{}) {
+					panic(entry.state.String() + " must have nil timestamp")
+				}
+				if entry.is_session_requested {
+					panic(entry.state.String() + " is_session_requested true")
+				}
+			case WS_JN:
+				panic("World too early to be exposed")
+			case WS_RMEM_NJNI:
+				// early MEM
+				if id != entry.PeerID || id != entry.Peer.ID() {
+					panic(entry.state.String() + " peer id mismatch")
+				}
+				if entry.SessionID != uuid.Nil {
+					panic(entry.state.String() + " must have non-nil session id")
+				}
+				if entry.TimeStamp.Equal(time.Time{}) {
+					panic(entry.state.String() + " must have non-nil timestamp")
+				}
+				if entry.is_session_requested {
+					panic(entry.state.String() + " is_session_requested true")
+				}
+			case WS_JNI:
+				panic(entry.state.String() + " must not exist (no MEM)")
+			case WS_RMEM:
+				panic(entry.state.String() + " must not exist (no JNI)")
+			case WS_TMEM:
+				panic(entry.state.String() + " must not exist (no JNI)")
+			case WS_MEM:
+				panic("MEM must not exist")
+			default:
+				panic(entry.state.String())
+			}
+		}
+	case W_Working:
+		if w.join_target != nil {
+			panic("world join target non-nil")
+		}
+		if w.join_path != "" {
+			panic("world join path non-nil")
+		}
+		if w.url == "" {
+			panic("world url nil")
+		}
+		for id, entry := range w.entries {
+			if id == "" {
+				panic(entry.state.String() + " entry with nil id")
+			}
+			switch entry.state {
+			case WS_DC_JNI:
+				if id != entry.PeerID {
+					panic(entry.state.String() + " peer id mismatch")
+				}
+				if entry.Peer != nil {
+					panic(entry.state.String() + " must have nil Peer")
+				}
+				if entry.SessionID != uuid.Nil {
+					panic(entry.state.String() + " must have nil session id")
+				}
+				if !entry.TimeStamp.Equal(time.Time{}) {
+					panic(entry.state.String() + " must have nil TimeStamp")
+				}
+				if entry.is_session_requested {
+					panic(entry.state.String() + " is_session_requested true")
+				}
+			case WS_CC:
+				if id != entry.PeerID || id != entry.Peer.ID() {
+					panic(entry.state.String() + " peer id mismatch")
+				}
+				if entry.SessionID != uuid.Nil {
+					panic(entry.state.String() + " must have nil session id")
+				}
+				if !entry.TimeStamp.Equal(time.Time{}) {
+					panic(entry.state.String() + " must have nil timestamp")
+				}
+				if entry.is_session_requested {
+					panic(entry.state.String() + " is_session_requested true")
+				}
+			case WS_JN, WS_JNI, WS_RMEM, WS_TMEM, WS_MEM:
+				if id != entry.PeerID || id != entry.Peer.ID() {
+					panic(entry.state.String() + " peer id mismatch")
+				}
+				if entry.SessionID == uuid.Nil {
+					panic(entry.state.String() + " must have non-nil session id")
+				}
+				if entry.TimeStamp.Equal(time.Time{}) {
+					panic(entry.state.String() + " must have non-nil timestamp")
+				}
+				if !entry.is_session_requested {
+					panic(entry.state.String() + " is_session_requested false")
+				}
+			case WS_RMEM_NJNI:
+				if id != entry.PeerID || id != entry.Peer.ID() {
+					panic(entry.state.String() + " peer id mismatch")
+				}
+				if entry.SessionID == uuid.Nil {
+					panic(entry.state.String() + " must have non-nil session id")
+				}
+				if entry.TimeStamp.Equal(time.Time{}) {
+					panic(entry.state.String() + " must have non-nil timestamp")
+				}
+				if entry.is_session_requested {
+					panic(entry.state.String() + " is_session_requested true")
+				}
+			default:
+				panic(entry.state.String())
+			}
+		}
+	case W_Closed:
+		if w.join_target != nil {
+			panic("world join target non-nil")
+		}
+		if w.join_path != "" {
+			panic("world join path non-nil")
+		}
+		if w.url == "" {
+			panic("world url nil")
+		}
+		for id, entry := range w.entries {
+			if id == "" {
+				panic("entry with nil id")
+			}
+			switch entry.state {
+			case WS_DC_JNI:
+			case WS_CC:
+			case WS_JN:
+			case WS_RMEM_NJNI:
+			case WS_JNI:
+			case WS_RMEM:
+			case WS_TMEM:
+			case WS_MEM:
+			}
+		}
+	default:
+		panic("invalid world lifecycle")
+	}
+}
+
 // ContainedPeers should only be called after the world termination.
 func (w *World) ContainedPeers() []ani.IAbyssPeer {
+	config.IF_DEBUG(func() {
+		if w.lifecycle != W_Closed {
+			panic("World.ContainedPeers should only be used after the world closes.")
+		}
+	})
+
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
 
@@ -87,19 +275,20 @@ func (w *World) ContainedPeers() []ani.IAbyssPeer {
 // removeEntry should only be called for unexpected malfunction of the opponent.
 // is this a good design? IDK ¯\_(ツ)_/¯
 func (w *World) removeEntry(entry *peerWorldSessionState, message string) {
-	switch entry.state {
-	case WS_JT:
-		w.o.eventCh <- &EANDJoinFail{
-			World:   w,
-			Code:    JNC_INVALID_STATES,
-			Message: JNM_INVALID_STATES,
+	config.IF_DEBUG(func() {
+		if w.lifecycle != W_Working {
+			panic("World.removeEntry should only be used when the world is working state.")
 		}
-		w.is_alive = false
-		return
-	case WS_JN:
-		w.sendJDN(entry, JNC_INVALID_STATES, JNM_INVALID_STATES)
+	})
+
+	switch entry.state {
+	case WS_DC_JNI:
+
 	}
 
+	if entry.state == WS_JN {
+		w.sendJDN(entry, JNC_INVALID_STATES, JNM_INVALID_STATES)
+	}
 	if entry.SessionID != uuid.Nil {
 		w.sendRST(entry, "unexpected failure::"+entry.state.String()+":"+message)
 	}
@@ -118,19 +307,20 @@ func (w *World) removeEntry(entry *peerWorldSessionState, message string) {
 	delete(w.entries, entry.PeerID)
 }
 
-// tryResetPeerSession cleanly resets peer states if newer session id was given.
+// tryOverwritePeerSession cleanly resets peer states if newer session id was given.
 // is this a good design? IDK ¯\_(ツ)_/¯
-func (w *World) tryResetPeerSession(s *peerWorldSessionState, session_id uuid.UUID, timestamp time.Time) bool {
+func (w *World) tryOverwritePeerSession(s *peerWorldSessionState, session_id uuid.UUID, timestamp time.Time) bool {
 	if s.TimeStamp.Before(timestamp) {
+		s.state = 0 // state must be defined right afterwards.
 		s.SessionID = session_id
 		s.TimeStamp = timestamp
-		s.state = WS_CC
 		if s.is_session_requested {
 			w.o.eventCh <- EANDSessionClose{
 				World:          w,
 				ANDPeerSession: s.ANDPeerSession(),
 			}
 		}
+		s.is_session_requested = false
 		s.sjnp = false
 		s.sjnc = 0
 		return true
@@ -195,7 +385,7 @@ func (w *World) JN(peer_session ANDPeerSession, timestamp time.Time) {
 	case WS_JT: //should not happen. during joining, the world must be hidden, not accepting JN.
 		SendJDN(peer_session.Peer, peer_session.SessionID, JNC_INVALID_STATES, JNM_INVALID_STATES)
 	case WS_JN, WS_RMEM_NJNI, WS_JNI, WS_RMEM, WS_TMEM, WS_MEM:
-		if w.tryResetPeerSession(info, peer_session.SessionID, timestamp) {
+		if w.tryOverwritePeerSession(info, peer_session.SessionID, timestamp) {
 			info.state = WS_JN
 			w.o.eventCh <- &EANDSessionRequest{
 				World:          w.lsid,
@@ -211,7 +401,7 @@ func (w *World) JN(peer_session ANDPeerSession, timestamp time.Time) {
 func (w *World) JOK(peer_session ANDPeerSession, timestamp time.Time, world_url string, member_infos []ANDFullPeerSessionInfo) {
 	sender_id := peer_session.Peer.ID()
 	info := w.entries[sender_id]
-	if w.join_id != sender_id ||
+	if w.join_target != sender_id ||
 		info.state != WS_JT {
 		SendRST(peer_session.Peer, w.lsid, peer_session.SessionID, "JOK::not WS_JT")
 		return
@@ -236,7 +426,7 @@ func (w *World) JOK(peer_session ANDPeerSession, timestamp time.Time, world_url 
 }
 func (w *World) JDN(peer ani.IAbyssPeer, code int, message string) { //no branch number here... :(
 	info := w.entries[peer.ID()]
-	if w.join_id != peer.ID() ||
+	if w.join_target != peer.ID() ||
 		info.state != WS_JT {
 		return
 	}
@@ -302,7 +492,7 @@ func (w *World) JNI_MEMS(sender_id string, mem_info ANDFullPeerSessionInfo) {
 			ANDPeerSession: info.ANDPeerSession(),
 		}
 	case WS_JN:
-		if w.tryResetPeerSession(info, mem_info.SessionID, mem_info.TimeStamp) {
+		if w.tryOverwritePeerSession(info, mem_info.SessionID, mem_info.TimeStamp) {
 			//unlikely to happen
 			info.state = WS_JNI
 			w.o.eventCh <- &EANDSessionRequest{
@@ -311,7 +501,7 @@ func (w *World) JNI_MEMS(sender_id string, mem_info ANDFullPeerSessionInfo) {
 			}
 		}
 	case WS_RMEM_NJNI:
-		if w.tryResetPeerSession(info, mem_info.SessionID, mem_info.TimeStamp) {
+		if w.tryOverwritePeerSession(info, mem_info.SessionID, mem_info.TimeStamp) {
 			info.state = WS_JNI
 			w.o.eventCh <- &EANDSessionRequest{
 				World:          w.lsid,
@@ -328,7 +518,7 @@ func (w *World) JNI_MEMS(sender_id string, mem_info ANDFullPeerSessionInfo) {
 		}
 		//else: old session
 	case WS_JNI, WS_RMEM, WS_TMEM, WS_MEM:
-		if w.tryResetPeerSession(info, mem_info.SessionID, mem_info.TimeStamp) {
+		if w.tryOverwritePeerSession(info, mem_info.SessionID, mem_info.TimeStamp) {
 			info.state = WS_JNI
 			w.o.eventCh <- &EANDSessionRequest{
 				World:          w.lsid,
@@ -350,12 +540,12 @@ func (w *World) MEM(peer_session ANDPeerSession, timestamp time.Time) {
 	case WS_JT:
 		w.removeEntry(peer_session.Peer.ID(), info, "received MEM from WS_JT")
 	case WS_JN, WS_RMEM_NJNI, WS_RMEM, WS_MEM:
-		if w.tryResetPeerSession(info, peer_session.SessionID, timestamp) {
+		if w.tryOverwritePeerSession(info, peer_session.SessionID, timestamp) {
 			info.state = WS_RMEM_NJNI
 			return
 		}
 	case WS_JNI:
-		if w.tryResetPeerSession(info, peer_session.SessionID, timestamp) {
+		if w.tryOverwritePeerSession(info, peer_session.SessionID, timestamp) {
 			info.state = WS_RMEM_NJNI
 			return
 		}
@@ -363,7 +553,7 @@ func (w *World) MEM(peer_session ANDPeerSession, timestamp time.Time) {
 			info.state = WS_RMEM
 		}
 	case WS_TMEM:
-		if w.tryResetPeerSession(info, peer_session.SessionID, timestamp) {
+		if w.tryOverwritePeerSession(info, peer_session.SessionID, timestamp) {
 			info.state = WS_RMEM_NJNI
 			return
 		}
