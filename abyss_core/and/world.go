@@ -281,15 +281,14 @@ func (w *World) removeEntry(entry *peerWorldSessionState, message string) {
 		}
 	})
 
-	switch entry.state {
-	case WS_DC_JNI:
-
+	if entry.state == WS_DC_JNI {
+		delete(w.entries, entry.PeerID)
+		return
 	}
 
 	if entry.state == WS_JN {
 		w.sendJDN(entry, JNC_INVALID_STATES, JNM_INVALID_STATES)
-	}
-	if entry.SessionID != uuid.Nil {
+	} else if entry.SessionID != uuid.Nil {
 		w.sendRST(entry, "unexpected failure::"+entry.state.String()+":"+message)
 	}
 	if entry.is_session_requested {
@@ -298,17 +297,15 @@ func (w *World) removeEntry(entry *peerWorldSessionState, message string) {
 			ANDPeerSession: entry.ANDPeerSession(),
 		}
 	}
-	if entry.Peer != nil {
-		w.o.eventCh <- &EANDPeerDiscard{
-			World: w,
-			Peer:  entry.Peer,
-		}
+	w.o.eventCh <- &EANDPeerDiscard{
+		World: w,
+		Peer:  entry.Peer,
 	}
 	delete(w.entries, entry.PeerID)
 }
 
 // tryOverwritePeerSession cleanly resets peer states if newer session id was given.
-// is this a good design? IDK ¯\_(ツ)_/¯
+// This is kinda dangerous; impact is high. Can we ever prevent/detect forgery?
 func (w *World) tryOverwritePeerSession(s *peerWorldSessionState, session_id uuid.UUID, timestamp time.Time) bool {
 	if s.TimeStamp.Before(timestamp) {
 		s.state = 0 // state must be defined right afterwards.
@@ -329,21 +326,20 @@ func (w *World) tryOverwritePeerSession(s *peerWorldSessionState, session_id uui
 	}
 }
 
-// is this a good design? IDK ¯\_(ツ)_/¯
-func (w *World) isProperMemberOrReset(info *peerWorldSessionState, peer_session ANDPeerSession) bool {
-	switch info.state {
-	case WS_DC_JNI:
-		panic("not connected")
-	case WS_MEM:
-		if info.SessionID == peer_session.SessionID {
-			return true
-		}
-		fallthrough
-	default:
-		w.removeEntry(info, "non-member reset")
-	}
-	return false
-}
+// func (w *World) isProperMemberOrReset(info *peerWorldSessionState, peer_session ANDPeerSession) bool {
+// 	switch info.state {
+// 	case WS_DC_JNI:
+// 		panic("not connected")
+// 	case WS_MEM:
+// 		if info.SessionID == peer_session.SessionID {
+// 			return true
+// 		}
+// 		fallthrough
+// 	default:
+// 		w.removeEntry(info, "non-member reset")
+// 	}
+// 	return false
+// }
 
 func (w *World) PeerConnected(peer_loc PeerWithLocation) {
 	info, ok := w.entries[peer_loc.Peer.ID()]

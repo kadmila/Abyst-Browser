@@ -24,6 +24,16 @@ type ObjectInfo struct {
 }
 
 ///// For world algorithm
+/* copy-paste
+WS_DC_JNI
+WS_CC
+WS_JN
+WS_RMEM_NJNI
+WS_JNI
+WS_RMEM
+WS_TMEM
+WS_MEM
+*/
 
 type ANDSessionState int
 
