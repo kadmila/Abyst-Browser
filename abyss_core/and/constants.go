@@ -6,6 +6,7 @@ const (
 	//Joiner-side problem
 	JNC_NOT_FOUND = 404
 	JNC_DUPLICATE = 480
+	JNC_OVERRUN   = 481
 	JNC_CANCELED  = 498
 	JNC_CLOSED    = 499
 
@@ -22,6 +23,7 @@ const (
 
 	JNM_NOT_FOUND = "Not Found"
 	JNM_DUPLICATE = "Duplicate Join"
+	JNM_OVERRUN   = "World Overrun"
 	JNM_CANCELED  = "Join Canceled"
 	JNM_CLOSED    = "Peer Disconnected"
 

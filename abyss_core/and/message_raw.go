@@ -236,6 +236,7 @@ func (r *RawCRR) TryParse() (*CRR, error) {
 type RawRST struct {
 	SenderSessionID string
 	RecverSessionID string
+	Code            int
 	Message         string
 }
 
@@ -248,7 +249,7 @@ func (r *RawRST) TryParse() (*RST, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &RST{ssid, rsid, r.Message}, nil
+	return &RST{ssid, rsid, r.Code, r.Message}, nil
 }
 
 type RawObjectInfo struct {

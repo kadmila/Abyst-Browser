@@ -48,6 +48,7 @@ type CRR struct {
 type RST struct {
 	SenderSessionID uuid.UUID //may nil.
 	RecverSessionID uuid.UUID
+	Code            int
 	Message         string //optional
 }
 

@@ -1,6 +1,7 @@
 package and
 
 import (
+	"container/list"
 	"net/netip"
 	"time"
 
@@ -9,10 +10,9 @@ import (
 )
 
 // IANDEvent conveys event/request from AND to host.
-// a session my close before ready, but never before request.
-// Discard/Leave is a confirmation, not a request.
-// If JoinFail or WorldLeave is fired,
-// no further event is meaningful.
+// a session may close before ready, but never before request.
+// No event should be pushed after JoinFail or WorldLeave.
+// This must be a pointer for an EAND struct.
 type IANDEvent any
 
 type EANDWorldEnter struct {
@@ -67,4 +67,25 @@ type EANDObjectDelete struct {
 /// debug
 
 type EANDError struct {
+}
+
+type ANDEventQueue struct {
+	inner *list.List
+}
+
+func NewANDEventQueue() *ANDEventQueue {
+	return &ANDEventQueue{
+		inner: list.New(),
+	}
+}
+
+func (q *ANDEventQueue) Push(e any) {
+	q.inner.PushBack(e)
+}
+func (q *ANDEventQueue) Pop() (any, bool) {
+	front := q.inner.Front()
+	if front == nil {
+		return nil, false
+	}
+	return q.inner.Remove(front), true
 }

@@ -17,28 +17,28 @@ import (
 
 type AND struct {
 	local_id string
-	eventCh  chan IANDEvent
+	//eventCh  chan IANDEvent
 }
 
 func NewAND(local_id string) *AND {
 	return &AND{
 		local_id: local_id,
-		eventCh:  make(chan IANDEvent, 1024),
+		//eventCh:  make(chan IANDEvent, 1024),
 	}
 }
 
-func (a *AND) EventChannel() <-chan IANDEvent {
-	return a.eventCh
-}
+// func (a *AND) EventChannel() <-chan IANDEvent {
+// 	return a.eventCh
+// }
 
-func (a *AND) OpenWorld(world_url string) *World {
+func (a *AND) OpenWorld(events *ANDEventQueue, world_url string) *World {
 	watchdog.Info("appCall::OpenWorld " + world_url)
 
-	return newWorld_Open(a, world_url)
+	return newWorld_Open(events, a, world_url)
 }
 
-func (a *AND) JoinWorld(target ani.IAbyssPeer, target_addrs []netip.AddrPort, path string) (*World, error) {
+func (a *AND) JoinWorld(events *ANDEventQueue, target ani.IAbyssPeer, target_addrs []netip.AddrPort, path string) (*World, error) {
 	watchdog.Info("appCall::JoinWorld " + target.ID() + " " + path)
 
-	return newWorld_Join(a, target, target_addrs, path) //should immediate return
+	return newWorld_Join(events, a, target, target_addrs, path) //should immediate return
 }

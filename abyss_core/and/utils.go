@@ -68,7 +68,7 @@ const (
 	// (O) SessionID, TimeStamp, is_session_requested
 	WS_RMEM
 
-	// WS_TMEM : MEM sent
+	// WS_TMEM : MEM/JOK sent
 	// (X)
 	// (O) SessionID, TimeStamp, is_session_requested
 	WS_TMEM

@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kadmila/Abyss-Browser/abyss_core/ahmp"
-	"github.com/kadmila/Abyss-Browser/abyss_core/ani"
+	"github.com/kadmila/Abyss-Browser/abyss_core/config"
 	"github.com/kadmila/Abyss-Browser/abyss_core/tools/functional"
 )
 
@@ -38,6 +38,13 @@ func (w *World) sendJOK_JNI(joiner *peerWorldSessionState) error {
 func (w *World) sendJDN(joiner *peerWorldSessionState, code int, message string) error {
 	return joiner.Peer.Send(ahmp.JDN_T, RawJDN{
 		RecverSessionID: joiner.SessionID.String(),
+		Code:            code,
+		Message:         message,
+	})
+}
+func (w *World) sendJDN_Direct(peer_session ANDPeerSession, code int, message string) error {
+	return peer_session.Peer.Send(ahmp.JDN_T, RawJDN{
+		RecverSessionID: peer_session.SessionID.String(),
 		Code:            code,
 		Message:         message,
 	})
@@ -98,18 +105,56 @@ func (w *World) sendCRR(member *peerWorldSessionState, missing_entries []ANDPeer
 		}),
 	})
 }
-func (w *World) sendRST(target *peerWorldSessionState, message string) error {
+func (w *World) sendRST(target *peerWorldSessionState, code int, message string) error {
+	config.IF_DEBUG(func() {
+		if target.SessionID == uuid.Nil {
+			panic("sending RST with empty RecverSessionID is prohibited")
+		}
+	})
 	return target.Peer.Send(ahmp.RST_T, RawRST{
 		SenderSessionID: w.lsid.String(),
 		RecverSessionID: target.SessionID.String(),
+		Code:            code,
 		Message:         message,
 	})
 }
+func (w *World) sendRST_Direct(peer_session ANDPeerSession, code int, message string) error {
+	config.IF_DEBUG(func() {
+		if peer_session.SessionID == uuid.Nil {
+			panic("sending RST with empty RecverSessionID is prohibited")
+		}
+	})
+	return peer_session.Peer.Send(ahmp.RST_T, RawRST{
+		SenderSessionID: w.lsid.String(),
+		RecverSessionID: peer_session.SessionID.String(),
+		Code:            code,
+		Message:         message,
+	})
+}
+func (w *World) broadcastRST(code int, message string) error {
+	for _, entry := range w.entries {
+		if entry.Peer != nil && entry.SessionID != uuid.Nil {
+			entry.Peer.Send(ahmp.RST_T, RawRST{
+				SenderSessionID: w.lsid.String(),
+				RecverSessionID: entry.SessionID.String(),
+				Code:            code,
+				Message:         message,
+			})
+		}
+	}
+	return nil
+}
 
-func SendRST_NoWorld(peer ani.IAbyssPeer, peer_session_id uuid.UUID, message string) error {
-	return peer.Send(ahmp.RST_T, RawRST{
+func SendRST_NoWorld(peer_session ANDPeerSession, code int, message string) error {
+	config.IF_DEBUG(func() {
+		if peer_session.SessionID == uuid.Nil {
+			panic("sending RST with empty RecverSessionID is prohibited")
+		}
+	})
+	return peer_session.Peer.Send(ahmp.RST_T, RawRST{
 		SenderSessionID: uuid.Nil.String(),
-		RecverSessionID: peer_session_id.String(),
+		RecverSessionID: peer_session.SessionID.String(),
+		Code:            code,
 		Message:         message,
 	})
 }
