@@ -412,7 +412,9 @@ func (w *World) JNI(events *ANDEventQueue, peer_session ANDPeerSession, member_i
 
 	entry, ok := w.entries[peer_session.Peer.ID()]
 	if !ok {
+		// no entry exists.
 		if w.join_target.Peer == peer_session.Peer {
+			// join target sent JNI. Now we can't join, as joining process has beed corrupted.
 			events.Push(&EANDWorldLeave{
 				World:   w,
 				Code:    JNC_INVALID_STATES,
@@ -420,34 +422,30 @@ func (w *World) JNI(events *ANDEventQueue, peer_session ANDPeerSession, member_i
 			})
 			return
 		}
+		// no entry, not a join target
+		// a peer must be registered in before raising any communication event.
 		panic("JNI: World corrupted")
 	}
-
-	if entry.state != WS_MEM {
-		// right session, wrong state - opponent failure.
-		if entry.SessionID == peer_session.SessionID {
-			w.removeEntry(events, entry, JNC_INVALID_STATES, JNM_INVALID_STATES)
-			return
-		}
-		
-		// session overrun expected.
-	}
-
-	 || entry.SessionID != peer_session.SessionID
-
-	sender_id := peer_session.Peer.ID()
-	info := w.entries[sender_id]
-
-	if !w.isProperMemberOrReset(info, peer_session) {
+	// a peer has sent me JNI.
+	// check if the peer is a member.
+	if entry.SessionID != peer_session.SessionID {
+		// session ID mismatch
+		// JNI cannot overrun another session, as a membership handshake is mendated before JNI.
+		// Interpretation: this is from an outdated session. Message ignored
 		return
 	}
-
-	w.jni_mems(sender_id, member_info)
+	if entry.state != WS_MEM {
+		// right session, wrong state - opponent failure.
+		w.removeEntry(events, entry, JNC_INVALID_STATES, JNM_INVALID_STATES)
+		return
+	}
+	// Confirmed: This JNI is from a valid member.
+	w.jni_mems(events, entry, member_info)
 }
 func (w *World) jni_mems(events *ANDEventQueue, sender *peerWorldSessionState, mem_info ANDFullPeerSessionInfo) {
 	config.IF_DEBUG(func() {
-		if w.lifecycle != W_Working {
-			panic("jni_mems: world is not W_Working")
+		if w.join_target != nil {
+			panic("jni_mems: world is joining")
 		}
 	})
 
@@ -488,41 +486,65 @@ func (w *World) jni_mems(events *ANDEventQueue, sender *peerWorldSessionState, m
 	}
 }
 func (w *World) MEM(events *ANDEventQueue, peer_session ANDPeerSession, timestamp time.Time) {
-	info := w.entries[peer_session.Peer.ID()]
-	switch info.state {
-	case WS_CC:
-		info.SessionID = peer_session.SessionID
-		info.TimeStamp = timestamp
-		info.state = WS_RMEM_NJNI
-	case WS_JT:
-		w.removeEntry(peer_session.Peer.ID(), info, "received MEM from WS_JT")
-	case WS_JN, WS_RMEM_NJNI, WS_RMEM, WS_MEM:
-		if w.tryOverwritePeerSession(info, peer_session.SessionID, timestamp) {
-			info.state = WS_RMEM_NJNI
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+
+	// MEM is onemost simple but tricky message. Any peer can send MEM, and
+	// MEM can overrun old session; and it is forced, as it is from the peer.
+
+	// only malicious case - join target sending MEM.
+	if w.join_target != nil && w.join_target.Peer == peer_session.Peer {
+		// join process corrupted
+		events.Push(&EANDWorldLeave{
+			World:   w,
+			Code:    JNC_INVALID_STATES,
+			Message: JNM_INVALID_STATES,
+		})
+		return
+	}
+
+	entry := w.entries[peer_session.Peer.ID()]
+	if entry.SessionID != peer_session.SessionID {
+		// MEM for unexpected session, or
+		// no previous session information exists.
+		if w.tryOverwritePeerSession(events, entry, peer_session.SessionID, timestamp) {
+			// re-configure state, no further action can be taken.
+			entry.state = WS_RMEM_NJNI
+			return
+		} else {
+			// reset this MEM.
+			w.sendRST_Direct(peer_session, JNC_OVERRUN, JNM_OVERRUN)
 			return
 		}
+	}
+	// Confirmed: This MEM is from an expected peer.
+
+	switch entry.state {
+	case WS_DC_JNI, WS_CC:
+		panic("impossible")
+	case WS_JN:
+		// Joined and also sent MEM.
+		// This is a failure, because
+		// 1) joining session does not have a member.
+		// 2) MEM can only be fired for JNI.
+		// 3) JNI can only be sent from a member.
+		// Therefore, a joining peer must not send MEM.
+		w.sendRST_Direct(peer_session, JNC_INVALID_STATES, JNM_INVALID_STATES)
+		w.removeEntry(events, entry, JNC_INVALID_STATES, JNM_INVALID_STATES)
+		return
+	case WS_RMEM_NJNI, WS_RMEM, WS_MEM:
+		// very weird case - session check passed, duplicate MEM.
+		// There is absolutely no need for this.
+		w.removeEntry(events, entry, JNC_INVALID_STATES, JNM_INVALID_STATES)
+		return
 	case WS_JNI:
-		if w.tryOverwritePeerSession(info, peer_session.SessionID, timestamp) {
-			info.state = WS_RMEM_NJNI
-			return
-		}
-		if info.SessionID == peer_session.SessionID {
-			info.state = WS_RMEM
-		}
+		entry.state = WS_RMEM
 	case WS_TMEM:
-		if w.tryOverwritePeerSession(info, peer_session.SessionID, timestamp) {
-			info.state = WS_RMEM_NJNI
-			return
-		}
-		if info.SessionID == peer_session.SessionID {
-			info.state = WS_MEM
-			w.o.eventCh <- &EANDSessionReady{
-				World:          w.lsid,
-				ANDPeerSession: info.ANDPeerSession(),
-			}
-		}
-	default:
-		panic("and: impossible disconnected state")
+		entry.state = WS_MEM
+		events.Push(&EANDSessionReady{
+			World:          w,
+			ANDPeerSession: entry.ANDPeerSession(),
+		})
 	}
 }
 func (w *World) SJN(peer_session ANDPeerSession, member_infos []ANDPeerSessionIdentity) {

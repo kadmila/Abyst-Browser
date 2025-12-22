@@ -23,7 +23,7 @@ const (
 
 	JNM_NOT_FOUND = "Not Found"
 	JNM_DUPLICATE = "Duplicate Join"
-	JNM_OVERRUN   = "World Overrun"
+	JNM_OVERRUN   = "World Session Overrun"
 	JNM_CANCELED  = "Join Canceled"
 	JNM_CLOSED    = "Peer Disconnected"
 
