@@ -21,8 +21,9 @@ type AbyssHost struct {
 	net ani.IAbyssNode
 	and *and.AND
 
-	exposed_worlds_mtx sync.Mutex
-	exposed_worlds     map[string]*and.World // accepting JN requests.
+	worlds_mtx     sync.Mutex
+	worlds         map[uuid.UUID]*and.World
+	exposed_worlds map[string]*and.World // JN path -> world
 
 	event_ch chan any
 }
@@ -67,7 +68,7 @@ func tryParseAhmp[RawT parsibleAhmp[T], T any](msg *ahmp.AHMPMesage) (*T, error)
 func (h *AbyssHost) servePeer(peer ani.IAbyssPeer) error {
 	and_event_receiver := and.NewANDEventQueue()
 	participating_worlds := make(map[uuid.UUID]*and.World)
-	event_handler := func() {
+	unsafe_event_handler := func() {
 		for {
 			event, ok := and_event_receiver.Pop()
 			if !ok {
@@ -96,7 +97,7 @@ func (h *AbyssHost) servePeer(peer ani.IAbyssPeer) error {
 		for _, world := range participating_worlds {
 			world.Lock()
 			world.PeerDisconnected(and_event_receiver, peer.ID())
-			event_handler()
+			unsafe_event_handler()
 			world.Unlock()
 		}
 		peer.Close()
@@ -115,9 +116,9 @@ func (h *AbyssHost) servePeer(peer ani.IAbyssPeer) error {
 				return err
 			}
 
-			h.exposed_worlds_mtx.Lock()
+			h.worlds_mtx.Lock()
 			world, ok := h.exposed_worlds[JN.Path]
-			h.exposed_worlds_mtx.Unlock()
+			h.worlds_mtx.Unlock()
 
 			peer_session := and.ANDPeerSession{Peer: peer, SessionID: JN.SenderSessionID}
 
@@ -252,8 +253,8 @@ func (h *AbyssHost) servePeer(peer ani.IAbyssPeer) error {
 }
 
 func (h *AbyssHost) ExposeWorldForJoin(world *and.World, path string) {
-	h.exposed_worlds_mtx.Lock()
-	defer h.exposed_worlds_mtx.Unlock()
+	h.worlds_mtx.Lock()
+	defer h.worlds_mtx.Unlock()
 
 	h.exposed_worlds[path] = world
 }

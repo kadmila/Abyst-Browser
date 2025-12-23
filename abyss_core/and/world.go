@@ -21,6 +21,8 @@ type World struct {
 	o *AND //origin
 	sync.Mutex
 
+	is_closed bool // this is set to true when EANDWorldLeave is fired.
+
 	lsid         uuid.UUID                         // local world session id
 	timestamp    time.Time                         // local world session creation timestamp
 	join_target  *peerWorldSessionState            // (when constructed with Join) join target peer, turns null after firing EANDWorldEnter

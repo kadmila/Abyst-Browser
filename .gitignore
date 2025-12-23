@@ -19,3 +19,5 @@ Abyss-Browser.code-workspace
 *.db-wal
 *.db-shm
 *.zip
+
+*/AGENTS.md
