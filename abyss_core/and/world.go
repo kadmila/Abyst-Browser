@@ -3,7 +3,6 @@ package and
 import (
 	"math/rand"
 	"net/netip"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,9 +18,8 @@ import (
 // This gives better control over call and event synchronization for the host.
 type World struct {
 	o *AND //origin
-	sync.Mutex
 
-	is_closed bool // this is set to true when EANDWorldLeave is fired.
+	is_closed bool // this is set true after firing EANDWorldLeave.
 
 	lsid         uuid.UUID                         // local world session id
 	timestamp    time.Time                         // local world session creation timestamp
@@ -72,6 +70,10 @@ func newWorld_Join(origin *AND, target ani.IAbyssPeer, target_addrs []netip.Addr
 		return nil, err
 	}
 	return result, nil
+}
+
+func (w *World) SessionID() uuid.UUID {
+	return w.lsid
 }
 
 func (w *World) CheckSanity() {
@@ -217,9 +219,7 @@ func (w *World) CheckSanity() {
 	}
 }
 
-// ContainedPeers should only be called after the world termination.
-func (w *World) ContainedPeers() []ani.IAbyssPeer {
-
+func (w *World) Peers() []ani.IAbyssPeer {
 	peers := functional.Filter_MtS_ok(w.entries, func(s *peerWorldSessionState) (ani.IAbyssPeer, bool) {
 		return s.Peer, s.Peer != nil
 	})
@@ -306,6 +306,7 @@ func (w *World) mustBeMemberCheck(events *ANDEventQueue, peer_session ANDPeerSes
 				Code:    JNC_INVALID_STATES,
 				Message: JNM_INVALID_STATES,
 			})
+			w.is_closed = true
 		} else {
 			panic("world state corrupted")
 		}
@@ -327,6 +328,9 @@ func (w *World) mustBeMemberCheck(events *ANDEventQueue, peer_session ANDPeerSes
 }
 
 func (w *World) PeerConnected(events *ANDEventQueue, peer ani.IAbyssPeer, addrs []netip.AddrPort) {
+	if w.is_closed {
+		return
+	}
 
 	config.IF_DEBUG(func() {
 		if w.join_target != nil && w.join_target.PeerID == peer.ID() {
@@ -362,6 +366,9 @@ func (w *World) PeerConnected(events *ANDEventQueue, peer ani.IAbyssPeer, addrs 
 }
 
 func (w *World) JN(events *ANDEventQueue, peer_session ANDPeerSession, timestamp time.Time) {
+	if w.is_closed {
+		return
+	}
 
 	config.IF_DEBUG(func() {
 		if w.join_target != nil {
@@ -389,6 +396,9 @@ func (w *World) JN(events *ANDEventQueue, peer_session ANDPeerSession, timestamp
 }
 
 func (w *World) JOK(events *ANDEventQueue, peer_session ANDPeerSession, timestamp time.Time, world_url string, member_infos []ANDFullPeerSessionInfo) {
+	if w.is_closed {
+		return
+	}
 
 	// normal case
 	if w.join_target != nil && w.join_target.Peer == peer_session.Peer {
@@ -431,6 +441,9 @@ func (w *World) JOK(events *ANDEventQueue, peer_session ANDPeerSession, timestam
 }
 
 func (w *World) JDN(events *ANDEventQueue, peer ani.IAbyssPeer, code int, message string) {
+	if w.is_closed {
+		return
+	}
 
 	// normal case
 	if w.join_target != nil && w.join_target.Peer == peer {
@@ -439,6 +452,7 @@ func (w *World) JDN(events *ANDEventQueue, peer ani.IAbyssPeer, code int, messag
 			Code:    code,
 			Message: message,
 		})
+		w.is_closed = true
 		return
 	}
 
@@ -451,6 +465,9 @@ func (w *World) JDN(events *ANDEventQueue, peer ani.IAbyssPeer, code int, messag
 }
 
 func (w *World) JNI(events *ANDEventQueue, peer_session ANDPeerSession, member_info ANDFullPeerSessionInfo) {
+	if w.is_closed {
+		return
+	}
 
 	// only the members can send JNI.
 	_, ok := w.mustBeMemberCheck(events, peer_session)
@@ -477,6 +494,7 @@ func (w *World) jni_mems(events *ANDEventQueue, mem_info ANDFullPeerSessionInfo)
 			TimeStamp: mem_info.TimeStamp,
 		}
 		events.Push(&EANDPeerRequest{
+			World:                      w,
 			PeerID:                     mem_info.PeerID,
 			AddressCandidates:          mem_info.AddressCandidates,
 			RootCertificateDer:         mem_info.RootCertificateDer,
@@ -490,6 +508,7 @@ func (w *World) jni_mems(events *ANDEventQueue, mem_info ANDFullPeerSessionInfo)
 		if mem_entry.Peer == nil {
 			mem_entry.state = WS_DC_JNI
 			events.Push(&EANDPeerRequest{
+				World:                      w,
 				PeerID:                     mem_info.PeerID,
 				AddressCandidates:          mem_info.AddressCandidates,
 				RootCertificateDer:         mem_info.RootCertificateDer,
@@ -507,6 +526,9 @@ func (w *World) jni_mems(events *ANDEventQueue, mem_info ANDFullPeerSessionInfo)
 }
 
 func (w *World) MEM(events *ANDEventQueue, peer_session ANDPeerSession, timestamp time.Time) {
+	if w.is_closed {
+		return
+	}
 
 	// MEM is onemost simple but tricky message. Any peer can send MEM, and
 	// MEM can overrun old session; and it is forced, as it is from the peer.
@@ -519,6 +541,7 @@ func (w *World) MEM(events *ANDEventQueue, peer_session ANDPeerSession, timestam
 			Code:    JNC_INVALID_STATES,
 			Message: JNM_INVALID_STATES,
 		})
+		w.is_closed = true
 		return
 	}
 
@@ -569,6 +592,9 @@ func (w *World) MEM(events *ANDEventQueue, peer_session ANDPeerSession, timestam
 }
 
 func (w *World) AcceptSession(events *ANDEventQueue, peer_session ANDPeerSession) {
+	if w.is_closed {
+		return
+	}
 
 	entry, ok := w.entries[peer_session.Peer.ID()]
 	if !ok {
@@ -604,6 +630,9 @@ func (w *World) AcceptSession(events *ANDEventQueue, peer_session ANDPeerSession
 }
 
 func (w *World) DeclineSession(events *ANDEventQueue, peer_session ANDPeerSession, code int, message string) {
+	if w.is_closed {
+		return
+	}
 
 	entry, ok := w.entries[peer_session.Peer.ID()]
 	if !ok {
@@ -627,6 +656,9 @@ func (w *World) DeclineSession(events *ANDEventQueue, peer_session ANDPeerSessio
 }
 
 func (w *World) TimerExpire(events *ANDEventQueue) {
+	if w.is_closed {
+		return
+	}
 
 	w.broadcastSJN()
 
@@ -637,6 +669,9 @@ func (w *World) TimerExpire(events *ANDEventQueue) {
 }
 
 func (w *World) SJN(events *ANDEventQueue, peer_session ANDPeerSession, member_infos []ANDPeerSessionIdentity) {
+	if w.is_closed {
+		return
+	}
 
 	entry, ok := w.mustBeMemberCheck(events, peer_session)
 	if !ok {
@@ -675,6 +710,9 @@ func (w *World) SJN(events *ANDEventQueue, peer_session ANDPeerSession, member_i
 }
 
 func (w *World) CRR(events *ANDEventQueue, peer_session ANDPeerSession, member_infos []ANDPeerSessionIdentity) {
+	if w.is_closed {
+		return
+	}
 
 	sender, ok := w.mustBeMemberCheck(events, peer_session)
 	if !ok {
@@ -692,6 +730,9 @@ func (w *World) CRR(events *ANDEventQueue, peer_session ANDPeerSession, member_i
 }
 
 func (w *World) SOA(events *ANDEventQueue, peer_session ANDPeerSession, objects []ObjectInfo) {
+	if w.is_closed {
+		return
+	}
 
 	_, ok := w.mustBeMemberCheck(events, peer_session)
 	if !ok {
@@ -706,6 +747,9 @@ func (w *World) SOA(events *ANDEventQueue, peer_session ANDPeerSession, objects 
 }
 
 func (w *World) SOD(events *ANDEventQueue, peer_session ANDPeerSession, objectIDs []uuid.UUID) {
+	if w.is_closed {
+		return
+	}
 
 	_, ok := w.mustBeMemberCheck(events, peer_session)
 	if !ok {
@@ -740,6 +784,9 @@ func (w *World) removeEntrySilent(events *ANDEventQueue, entry *peerWorldSession
 }
 
 func (w *World) RST(events *ANDEventQueue, peer_session ANDPeerSession) {
+	if w.is_closed {
+		return
+	}
 
 	entry, ok := w.entries[peer_session.Peer.ID()]
 	if !ok || entry.SessionID != peer_session.SessionID {
@@ -752,6 +799,9 @@ func (w *World) RST(events *ANDEventQueue, peer_session ANDPeerSession) {
 // We don't verify everything like we did for the other messages; we trust the caller.
 // PeerDisconnected should raise EANDPeerDiscoard event for the peer.
 func (w *World) PeerDisconnected(events *ANDEventQueue, peer_id string) {
+	if w.is_closed {
+		return
+	}
 
 	if w.join_target != nil && w.join_target.PeerID == peer_id {
 		events.Push(&EANDWorldLeave{
@@ -759,6 +809,7 @@ func (w *World) PeerDisconnected(events *ANDEventQueue, peer_id string) {
 			Code:    JNC_DISCONNECTED,
 			Message: JNM_DISCONNECTED,
 		})
+		w.is_closed = true
 		return
 	}
 
@@ -768,6 +819,10 @@ func (w *World) PeerDisconnected(events *ANDEventQueue, peer_id string) {
 // Close does not take events argument, as the world is closed immediately.
 // no events are meaningful afterwards.
 func (w *World) Close() {
+	if w.is_closed {
+		return
+	}
 
 	w.broadcastRST(JNC_CLOSED, JNM_CLOSED)
+	w.is_closed = true
 }

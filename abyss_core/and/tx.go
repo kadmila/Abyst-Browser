@@ -152,20 +152,6 @@ func (w *World) broadcastRST(code int, message string) error {
 	return nil
 }
 
-func SendRST_NoWorld(peer_session ANDPeerSession, code int, message string) error {
-	config.IF_DEBUG(func() {
-		if peer_session.SessionID == uuid.Nil {
-			panic("sending RST with empty RecverSessionID is prohibited")
-		}
-	})
-	return peer_session.Peer.Send(ahmp.RST_T, RawRST{
-		SenderSessionID: uuid.Nil.String(),
-		RecverSessionID: peer_session.SessionID.String(),
-		Code:            code,
-		Message:         message,
-	})
-}
-
 func SendJDN_NoWorld(peer_session ANDPeerSession, code int, message string) error {
 	return peer_session.Peer.Send(ahmp.JDN_T, RawJDN{
 		RecverSessionID: peer_session.SessionID.String(),

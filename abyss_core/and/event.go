@@ -32,6 +32,7 @@ type EANDSessionClose struct {
 	ANDPeerSession
 }
 type EANDPeerRequest struct {
+	World                      *World
 	PeerID                     string
 	AddressCandidates          []netip.AddrPort
 	RootCertificateDer         []byte
