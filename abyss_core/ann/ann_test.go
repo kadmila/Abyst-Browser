@@ -236,7 +236,7 @@ func TestReconnect(t *testing.T) {
 		v_sent := rand.Int()
 		peer_A_B.Send(0, v_sent)
 
-		var msg_rcvd ahmp.AHMPMesage
+		var msg_rcvd ahmp.AHMPMessage
 		peer_B_A.Recv(&msg_rcvd)
 
 		var v_rcvd int

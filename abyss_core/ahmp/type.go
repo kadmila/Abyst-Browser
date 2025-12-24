@@ -15,7 +15,7 @@ import (
 
 type AHMPMsgType int
 
-type AHMPMesage struct {
+type AHMPMessage struct {
 	Type    AHMPMsgType     `cbor:"0,keyasint"`
 	Payload cbor.RawMessage `cbor:"1,keyasint"`
 }

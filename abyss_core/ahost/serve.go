@@ -14,7 +14,7 @@ type parsibleAhmp[T any] interface {
 	TryParse() (*T, error)
 }
 
-func tryParseAhmp[RawT parsibleAhmp[T], T any](msg *ahmp.AHMPMesage) (*T, error) {
+func tryParseAhmp[RawT parsibleAhmp[T], T any](msg *ahmp.AHMPMessage) (*T, error) {
 	var raw RawT
 	if err := cbor.Unmarshal(msg.Payload, &raw); err != nil {
 		return nil, err
@@ -42,7 +42,7 @@ func (h *AbyssHost) servePeer(peer ani.IAbyssPeer) error {
 		peer.Close()
 	}()
 
-	var msg ahmp.AHMPMesage
+	var msg ahmp.AHMPMessage
 	for {
 		err := peer.Recv(&msg)
 		if err != nil {

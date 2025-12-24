@@ -34,7 +34,7 @@ func (p *AbyssPeer) RemoteAddr() netip.AddrPort {
 }
 
 func (p *AbyssPeer) Send(t ahmp.AHMPMsgType, v any) error {
-	var msg ahmp.AHMPMesage
+	var msg ahmp.AHMPMessage
 	msg.Type = t
 	var err error
 	msg.Payload, err = cbor.Marshal(v)
@@ -43,7 +43,7 @@ func (p *AbyssPeer) Send(t ahmp.AHMPMsgType, v any) error {
 	}
 	return p.ahmp_encoder.Encode(&msg)
 }
-func (p *AbyssPeer) Recv(v *ahmp.AHMPMesage) error {
+func (p *AbyssPeer) Recv(v *ahmp.AHMPMessage) error {
 	return p.ahmp_decoder.Decode(v)
 }
 func (p *AbyssPeer) Context() context.Context {
