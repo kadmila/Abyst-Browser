@@ -11,9 +11,10 @@ import (
 const (
 	AbyssQuicRedundantConnection quic.ApplicationErrorCode = 0x1000
 	AbyssQuicAhmpStreamFail      quic.ApplicationErrorCode = 0x1001
-	AbyssQuicCryptoFail          quic.ApplicationErrorCode = 0x1002
-	AbyssQuicAuthenticationFail  quic.ApplicationErrorCode = 0x1003
-	AbyssQuicHandshakeTimeout    quic.ApplicationErrorCode = 0x1004
+	AbyssQuicAhmpParseFail       quic.ApplicationErrorCode = 0x1002
+	AbyssQuicCryptoFail          quic.ApplicationErrorCode = 0x1010
+	AbyssQuicAuthenticationFail  quic.ApplicationErrorCode = 0x1011
+	AbyssQuicHandshakeTimeout    quic.ApplicationErrorCode = 0x1020
 
 	AbyssQuicClose    quic.ApplicationErrorCode = 0x1100
 	AbyssQuicOverride quic.ApplicationErrorCode = 0x1101
@@ -135,42 +136,27 @@ func (e *HandshakeError) GetIsDialing() bool            { return e.IsDialing }
 func (e *HandshakeError) GetStage() HandshakeStage      { return e.Stage }
 func (e *HandshakeError) GetUnderlying() error          { return e.Underlying }
 
-// HandshakeNetworkError represents transient network/transport issues.
-type HandshakeNetworkError struct {
+// HandshakeTransportError represents transient network/transport issues.
+// Quic errors should be wrapped as this.
+type HandshakeTransportError struct {
 	HandshakeError
-	IsTimeout   bool // Whether this is a timeout error
-	IsTransport bool // Whether this is a QUIC transport error
 }
 
-func (e *HandshakeNetworkError) Error() string {
-	errType := "network"
-	if e.IsTimeout {
-		errType = "timeout"
-	} else if e.IsTransport {
-		errType = "transport"
-	}
-	return fmt.Sprintf("%s handshake %s error at %s from %s (peer: %s): %v",
-		e.Direction(), errType, e.Stage, e.RemoteAddr, e.PeerID, e.Underlying)
+func (e *HandshakeTransportError) Error() string {
+	return fmt.Sprintf("%s handshake transport error at %s from %s (peer: %s): %v",
+		e.Direction(), e.Stage, e.RemoteAddr, e.PeerID, e.Underlying)
 }
 
-// HandshakeProtocolError represents protocol-level failures.
+// HandshakeProtocolError represents abyss protocol-level failures.
 type HandshakeProtocolError struct {
 	HandshakeError
-	IsAHMP        bool                       // AHMP encoding/decoding error
-	QuicErrorCode *quic.ApplicationErrorCode // QUIC error code if applicable
+	QuicErrorCode quic.ApplicationErrorCode // QUIC error code if applicable
 }
 
 func (e *HandshakeProtocolError) Error() string {
 	errType := "protocol"
-	if e.IsAHMP {
-		errType = "AHMP"
-	}
-	msg := fmt.Sprintf("%s handshake %s error at %s from %s (peer: %s): %v",
-		e.Direction(), errType, e.Stage, e.RemoteAddr, e.PeerID, e.Underlying)
-	if e.QuicErrorCode != nil {
-		msg += fmt.Sprintf(" [QUIC error code: 0x%x]", *e.QuicErrorCode)
-	}
-	return msg
+	return fmt.Sprintf("%s handshake %s error(0x%x) at %s from %s (peer: %s): %v",
+		e.Direction(), errType, e.QuicErrorCode, e.Stage, e.RemoteAddr, e.PeerID, e.Underlying)
 }
 
 // HandshakeAuthError represents authentication/cryptographic failures.

@@ -42,10 +42,15 @@ func (n *AbyssNode) dialRoutine(addr netip.AddrPort, peer_identity *sec.AbyssPee
 		newQuicConfig(),
 	)
 	if err != nil {
+		// QUIC handshake failure
+		var net_err HandshakeTransportError
 		if connection != nil {
-			connection.CloseWithError(0, "dial error")
+			net_err.RemoteAddr = connection.RemoteAddr().(*net.UDPAddr).AddrPort()
 		}
-		n.backlogAppendError(addr, true, err)
+		net_err.IsDialing = true
+		net_err.Stage = HS_Connection
+		net_err.Underlying = err
+		n.backlogPushErr(&net_err)
 		return
 	}
 
@@ -56,8 +61,15 @@ func (n *AbyssNode) dialRoutine(addr netip.AddrPort, peer_identity *sec.AbyssPee
 	// open ahmp stream
 	ahmp_stream, err := connection.OpenStreamSync(handshake_ctx)
 	if err != nil {
+		// QUIC stream failure
+		var net_err HandshakeTransportError
+		net_err.RemoteAddr = connection.RemoteAddr().(*net.UDPAddr).AddrPort()
+		net_err.IsDialing = true
+		net_err.Stage = HS_Connection
+		net_err.Underlying = err
+		n.backlogPushErr(&net_err)
+
 		connection.CloseWithError(AbyssQuicAhmpStreamFail, "failed to start AHMP")
-		n.backlogAppendError(addr, true, err)
 		return
 	}
 	ahmp_encoder := cbor.NewEncoder(ahmp_stream)
@@ -156,8 +168,17 @@ func (n *AbyssNode) serveRoutine(connection quic.Connection) {
 	// open ahmp stream
 	ahmp_stream, err := connection.AcceptStream(handshake_ctx)
 	if err != nil {
+		net_err := &HandshakeTransportError{
+			HandshakeError{
+				RemoteAddr: addr,
+				IsDialing:  false,
+				Stage:      HS_StreamSetup,
+				Underlying: err,
+			},
+		}
+		n.backlogPushErr(net_err)
+
 		connection.CloseWithError(AbyssQuicAhmpStreamFail, "failed to start AHMP")
-		n.backlogAppendError(addr, false, err)
 		return
 	}
 	ahmp_encoder := cbor.NewEncoder(ahmp_stream)
@@ -174,9 +195,28 @@ func (n *AbyssNode) serveRoutine(connection quic.Connection) {
 		// receive and decrypt peer's tls-binding certificate
 		var handshake_1_message ahmp.RawHS1
 		if err := ahmp_decoder.Decode(&handshake_1_message); err != nil {
-			result.err = err
-			result.close_code = AbyssQuicAhmpStreamFail
-			result.close_msg = "failed to receive AHMP"
+			var stream_err *quic.StreamError
+			if errors.As(err, &stream_err) {
+				var net_err *HandshakeTransportError
+				net_err.RemoteAddr = addr
+				net_err.IsDialing = false
+				net_err.Stage = HS_Handshake1
+				net_err.Underlying = err
+				result.err = net_err
+
+				result.close_code = AbyssQuicAhmpStreamFail
+				result.close_msg = "failed to receive AHMP"
+			} else {
+				var proto_err *HandshakeProtocolError
+				proto_err.RemoteAddr = addr
+				proto_err.IsDialing = false
+				proto_err.Stage = HS_Handshake1
+				proto_err.Underlying = err
+				result.err = proto_err
+
+				result.close_code = AbyssQuicAhmpParseFail
+				result.close_msg = "failed to parse AHMP message"
+			}
 			return
 		}
 		tls_binding_cert_derBytes, err := n.DecryptHandshake(handshake_1_message.EncryptedCertificate, handshake_1_message.EncryptedSecret)

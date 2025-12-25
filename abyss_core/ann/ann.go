@@ -164,21 +164,15 @@ func (n *AbyssNode) Serve() error {
 		var connection quic.Connection
 		connection, err = n.listener.Accept(n.service_ctx)
 		if err != nil {
-			var remote_addr netip.AddrPort
+			// QUIC handshake failure
+			var net_err HandshakeTransportError
 			if connection != nil {
-				a := connection.RemoteAddr().(*net.UDPAddr)
-				remote_addr = netip.AddrPortFrom(netip.AddrFrom4([4]byte(a.IP.To4())), uint16(a.Port))
+				net_err.RemoteAddr = connection.RemoteAddr().(*net.UDPAddr).AddrPort()
 			}
-			switch v := err.(type) {
-			case net.Error:
-				if v.Timeout() {
-					n.backlogAppendError(remote_addr, false, v)
-					continue
-				}
-			case *quic.ApplicationError, *quic.TransportError, *quic.VersionNegotiationError:
-				n.backlogAppendError(remote_addr, false, v)
-				continue
-			}
+			net_err.IsDialing = false
+			net_err.Stage = HS_Connection
+			net_err.Underlying = err
+			n.backlogPushErr(&net_err)
 			break
 		}
 

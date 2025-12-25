@@ -17,8 +17,8 @@ func NewHandshakeNetworkError(
 	err error,
 	isTimeout bool,
 	isTransport bool,
-) *HandshakeNetworkError {
-	return &HandshakeNetworkError{
+) *HandshakeTransportError {
+	return &HandshakeTransportError{
 		HandshakeError: HandshakeError{
 			RemoteAddr: addr,
 			PeerID:     peerID,
@@ -26,8 +26,6 @@ func NewHandshakeNetworkError(
 			Stage:      stage,
 			Underlying: err,
 		},
-		IsTimeout:   isTimeout,
-		IsTransport: isTransport,
 	}
 }
 
