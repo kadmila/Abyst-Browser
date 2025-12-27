@@ -61,6 +61,10 @@ func (r *AbyssPeerRegistry) RemovePeerIdentity(id string) {
 	defer r.mtx.Unlock()
 
 	delete(r.known, id)
+	delete(r.dialed, id)
+
+	// For entries of r.connected, we don't directly delete them.
+	// Instead, cut the connection and let the client-side Close() call handle it.
 	if old_peer, ok := r.connected[id]; ok {
 		delete(r.tls_certs, sec.HashTlsCertificate(old_peer.client_tls_cert))
 		old_peer.connection.CloseWithError(AbyssQuicClose, "")
@@ -108,19 +112,27 @@ func (r *AbyssPeerRegistry) GetPeerIdentityIfDialable(id string, addr netip.Addr
 		return nil, RE_UnknownPeer
 	}
 
+	// There is no need to dial connected peer
+	if _, ok := r.connected[id]; ok {
+		return nil, RE_Redundant
+	}
+
 	// There is no need to dial the same IP address twice.
 	history, ok := r.dialed[id]
 	if ok {
 		for _, v := range history.addresses {
-			if v.Compare(addr) != 0 {
+			if v.Compare(addr) == 0 {
 				return nil, RE_Redundant
 			}
 		}
-	}
-
-	// There is no need to dial connected peer
-	if _, ok := r.connected[id]; ok {
-		return nil, RE_Redundant
+		// not dialed with this address - add entry.
+		history.addresses = append(history.addresses, addr)
+	} else {
+		// not dialed yet - add entry.
+		r.dialed[id] = dialHistory{
+			handshake_key_issue_time: identity.IssueTime(),
+			addresses:                []netip.Addr{addr},
+		}
 	}
 
 	return identity, RE_OK
@@ -133,12 +145,18 @@ func (r *AbyssPeerRegistry) ReportDialTermination(identity *sec.AbyssPeerIdentit
 
 	history, ok := r.dialed[identity.ID()]
 	if !ok || !history.handshake_key_issue_time.Equal(identity.IssueTime()) {
+		// the dialing history expired.
 		return
 	}
 	for i, v := range history.addresses {
 		if v.Compare(addr) != 0 {
 			history.addresses = slices.Delete(history.addresses, i, i+1)
+			break
 		}
+	}
+	if len(history.addresses) == 0 {
+		// remove empty history
+		delete(r.dialed, identity.ID())
 	}
 }
 

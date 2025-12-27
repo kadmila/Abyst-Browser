@@ -45,6 +45,7 @@ func (n *AbyssNode) dialRoutine(addr netip.AddrPort, peer_identity *sec.AbyssPee
 	defer func() {
 		handshake_ctx_cancel()
 		n.registry.ReportDialTermination(peer_identity, addr.Addr())
+		n.serve_wg.Done()
 	}()
 
 	// dial
@@ -194,7 +195,10 @@ func (n *AbyssNode) dialRoutine(addr netip.AddrPort, peer_identity *sec.AbyssPee
 func (n *AbyssNode) serveRoutine(connection quic.Connection) {
 	// prepare handshake context - sets timeout for abyss handshake
 	handshake_ctx, handshake_ctx_cancel := context.WithTimeout(n.service_ctx, time.Second*5)
-	defer handshake_ctx_cancel()
+	defer func() {
+		handshake_ctx_cancel()
+		n.serve_wg.Done()
+	}()
 
 	// get address (for logging)
 	a := connection.RemoteAddr().(*net.UDPAddr)
@@ -323,14 +327,13 @@ IDENTITY_RETRIEVE_LOOP:
 				continue
 			case <-handshake_ctx.Done():
 				n.backlogPushErr(NewHandshakeError(
-					err,
+					handshake_ctx.Err(),
 					addr,
 					"",
 					false,
 					HS_Handshake1,
 					HS_Fail_UnknownPeer,
 				))
-				<-handshake_ctx.Done()
 				connection.CloseWithError(AbyssQuicHandshakeTimeout, "handshake timeout")
 				return
 			}
@@ -454,7 +457,7 @@ func (n *AbyssNode) tryCompletePeerMaster(is_dialing bool, pre_peer *AbyssPeer) 
 			pre_peer.remote_addr,
 			"",
 			is_dialing,
-			HS_PeerCompletion,
+			HS_Handshake3,
 			HS_Fail_TransportFail,
 		))
 		return

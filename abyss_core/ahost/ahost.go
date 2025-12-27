@@ -4,7 +4,6 @@ package ahost
 
 import (
 	"context"
-	"errors"
 	"net/netip"
 	"sync"
 
@@ -16,7 +15,7 @@ import (
 )
 
 type AbyssHost struct {
-	net ani.IAbyssNode
+	net *ann.AbyssNode
 	and *and.AND
 
 	service_ctx        context.Context
@@ -58,29 +57,27 @@ func NewAbyssHost(root_key sec.PrivateKey) (*AbyssHost, error) {
 }
 
 func (h *AbyssHost) Main() error {
-	err := h.net.Listen()
-	if err != nil {
+	defer h.service_cancelfunc()
+
+	if err := h.net.Listen(); err != nil {
 		return err
 	}
-	node_done := make(chan error)
-	go func() {
-		node_done <- h.net.Serve()
-	}()
+	go h.net.Serve() // we ignore the return value of Serve()
+	// This is somewhat temporary. Although we expect failure of Serve() will be
+	// bubbled up to the Accept() call, this is a bit lazy.
 
 	for {
 		peer, err := h.net.Accept(h.service_ctx)
-		if errors.Is(err, context.Canceled) {
-			break
+		if err != nil {
+			if _, ok := err.(*ann.HandshakeError); ok {
+				continue // TODO: log handshake errors for diagnosis
+			}
+			// other errors are fatal.
+			return err
 		}
 
-		go func() {
-			h.servePeer(peer)
-			// TODO: handle error
-		}()
+		go h.servePeer(peer)
 	}
-
-	<-node_done
-	return nil
 }
 
 func (h *AbyssHost) ExposeWorldForJoin(world *and.World, path string) {

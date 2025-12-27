@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"sync"
 	"time"
 
 	"github.com/kadmila/Abyss-Browser/abyss_core/abyst"
@@ -46,6 +47,11 @@ type AbyssNode struct {
 	registry *AbyssPeerRegistry
 
 	backlog chan backLogEntry
+
+	serve_wg sync.WaitGroup // For serveRoutine/dialRoutine
+
+	close_check_mtx sync.Mutex
+	close_cause     error
 
 	abyst_hub *abyst.AbystGateway
 }
@@ -160,6 +166,7 @@ func (n *AbyssNode) Listen() error {
 // It waits for incoming connections on quic.Listener in a loop.
 func (n *AbyssNode) Serve() error {
 	var err error
+MAIN_LOOP:
 	for {
 		var connection quic.Connection
 		connection, err = n.listener.Accept(n.service_ctx)
@@ -176,16 +183,25 @@ func (n *AbyssNode) Serve() error {
 				HS_Connection,
 				HS_Fail_TransportFail,
 			))
-			break
+			// Currently, we don't recover from Accept() failure.
+			// But, should we?
+			break MAIN_LOOP
 		}
 
 		switch connection.ConnectionState().TLS.NegotiatedProtocol {
 		case sec.NextProtoAbyss:
+			n.serve_wg.Add(1)
 			go n.serveRoutine(connection)
 		default:
 			connection.CloseWithError(0, "unsupported application layer protocol")
 		}
 	}
+	n.close_check_mtx.Lock()
+	n.close_cause = err
+	n.close_check_mtx.Unlock()
+
+	n.serve_wg.Wait()
+	close(n.backlog)
 	return n.cleanUp(err)
 }
 
@@ -225,10 +241,35 @@ func (n *AbyssNode) EraseKnownPeer(id string) {
 // Dial synchronously check for dialing plausibility, and
 // start a goroutine for handshake procedure.
 func (n *AbyssNode) Dial(id string, addr netip.AddrPort) error {
+	// Checks if AbyssNode is not yet closed, and also register for waitgroup.
+	n.close_check_mtx.Lock()
+	close_cause := n.close_cause
+	n.serve_wg.Add(1)
+	n.close_check_mtx.Unlock()
+
+	if close_cause != nil {
+		n.serve_wg.Done()
+		return close_cause
+	}
+
 	// query identity and dialing permission
 	// TODO: this should be separated.
 	peer_identity, registry_status := n.registry.GetPeerIdentityIfDialable(id, addr.Addr())
-	if registry_status != RE_OK {
+	switch registry_status {
+	case RE_OK:
+		// Proceed.
+	case RE_Redundant:
+		n.serve_wg.Done()
+		return NewHandshakeError(
+			errors.New("redundant dial"),
+			addr,
+			id,
+			true,
+			HS_Connection,
+			HS_Fail_Redundant,
+		)
+	case RE_UnknownPeer:
+		n.serve_wg.Done()
 		return NewHandshakeError(
 			errors.New("unknown peer"),
 			addr,
@@ -247,8 +288,20 @@ func (n *AbyssNode) Accept(ctx context.Context) (ani.IAbyssPeer, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case backlog_entry := <-n.backlog:
-		return backlog_entry.peer, backlog_entry.err
+	case backlog_entry, ok := <-n.backlog:
+		if !ok {
+			// This lock is pretty much unnecessary (memory barrier due to channel close),
+			// but just in case..
+			n.close_check_mtx.Lock()
+			err := n.close_cause
+			n.close_check_mtx.Unlock()
+
+			return nil, err
+		}
+		if backlog_entry.err != nil {
+			return backlog_entry.peer, backlog_entry.err
+		}
+		return backlog_entry.peer, nil
 	}
 }
 

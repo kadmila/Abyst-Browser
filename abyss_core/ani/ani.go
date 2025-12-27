@@ -4,7 +4,6 @@
 package ani
 
 import (
-	"context"
 	"crypto/x509"
 	"io"
 	"net/http"
@@ -32,58 +31,58 @@ type IAbyssPeerIdentity interface {
 // IAbyssNode defines an abyss node.
 // It is constructed from ann.Listen() (IAbyssNode, error).
 // It may implement abyst server internally.
-type IAbyssNode interface {
-	IAbyssPeerIdentity
-
-	// Listen binds network interface, starts service.
-	// Do Not call Listen() and Serve() twice.
-	// The AbyssNode is designed for single-use.
-	Listen() error
-
-	// Serve is the main service loop.
-	// It returns when Close() is called or when it crashed.
-	// Please file a bug report when it crashes.
-	Serve() error
-
-	// LocalAddrCandidates is the list of addresses for bound network interfaces.
-	// The return value must not be mutated.
-	LocalAddrCandidates() []netip.AddrPort
-
-	// AppendKnownPeer adds peer information for mutual auth.
-	// This is mendatory before Dial() and Accept().
-	AppendKnownPeer(root_cert string, handshake_key_cert string) error
-	AppendKnownPeerDer(root_cert []byte, handshake_key_cert []byte) error
-
-	// EraseKnownPeer removes peer information.
-	// The peer cannot be dialed until the peer information is re-provided.
-	EraseKnownPeer(id string)
-
-	// Dial returns error only for unknown hash or invalid address.
-	// When connected, the connection can be retrieved from Accept().
-	Dial(hash string, addr netip.AddrPort) error
-
-	// Accept returns a newly established peer.
-	Accept(ctx context.Context) (IAbyssPeer, error)
-
-	// ConfigAbystGateway configures abyst gateway from a json string.
-	// read (link will be here) for details.
-	ConfigAbystGateway(config string) error
-
-	// NewAbystClient creates an instance of abyst client.
-	NewAbystClient() (IAbystClient, error)
-
-	// NewCollocatedHttpClient provides HTTP/3 client that runs on the same
-	// QUIC host with the abyst node, with TLS client auth enabled.
-	NewCollocatedHttp3Client() (*http.Client, error)
-
-	// Close terminates internal loop.
-	// Even after Listen() failes, Close() should be called.
-	// DO NOT reuse AbyssNode after Close().
-	// After it returns, Accept() will only return error.
-	// Incoming connections are rejected.
-	// LocalAddrCandidates will be emptied.
-	Close() error
-}
+// type IAbyssNode interface {
+// 	IAbyssPeerIdentity
+//
+// 	// Listen binds network interface, starts service.
+// 	// Do Not call Listen() and Serve() twice.
+// 	// The AbyssNode is designed for single-use.
+// 	Listen() error
+//
+// 	// Serve is the main service loop.
+// 	// It returns when Close() is called or when it crashed.
+// 	// Please file a bug report when it crashes.
+// 	Serve() error
+//
+// 	// LocalAddrCandidates is the list of addresses for bound network interfaces.
+// 	// The return value must not be mutated.
+// 	LocalAddrCandidates() []netip.AddrPort
+//
+// 	// AppendKnownPeer adds peer information for mutual auth.
+// 	// This is mendatory before Dial() and Accept().
+// 	AppendKnownPeer(root_cert string, handshake_key_cert string) error
+// 	AppendKnownPeerDer(root_cert []byte, handshake_key_cert []byte) error
+//
+// 	// EraseKnownPeer removes peer information.
+// 	// The peer cannot be dialed until the peer information is re-provided.
+// 	EraseKnownPeer(id string)
+//
+// 	// Dial returns error only for unknown hash or invalid address.
+// 	// When connected, the connection can be retrieved from Accept().
+// 	Dial(hash string, addr netip.AddrPort) error
+//
+// 	// Accept returns a newly established peer.
+// 	Accept(ctx context.Context) (IAbyssPeer, error)
+//
+// 	// ConfigAbystGateway configures abyst gateway from a json string.
+// 	// read (link will be here) for details.
+// 	ConfigAbystGateway(config string) error
+//
+// 	// NewAbystClient creates an instance of abyst client.
+// 	NewAbystClient() (IAbystClient, error)
+//
+// 	// NewCollocatedHttpClient provides HTTP/3 client that runs on the same
+// 	// QUIC host with the abyst node, with TLS client auth enabled.
+// 	NewCollocatedHttp3Client() (*http.Client, error)
+//
+// 	// Close terminates internal loop.
+// 	// Even after Listen() failes, Close() should be called.
+// 	// DO NOT reuse AbyssNode after Close().
+// 	// After it returns, Accept() will only return error.
+// 	// Incoming connections are rejected.
+// 	// LocalAddrCandidates will be emptied.
+// 	Close() error
+// }
 
 type IAbystTlsCertChecker interface {
 	GetPeerIdFromTlsCertificate(certificate *x509.Certificate) (string, bool)
