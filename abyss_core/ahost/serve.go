@@ -80,7 +80,7 @@ func (h *AbyssHost) servePeer(peer ani.IAbyssPeer) error {
 				return err
 			}
 			peer_session := and.ANDPeerSession{Peer: peer, SessionID: JNI.SenderSessionID}
-			if err := h.onJNI(events, JNI, peer_session, participating_worlds); err != nil {
+			if err := h.onJNI(events, JNI, peer_session, participating_worlds, JNI.Neighbor); err != nil {
 				return err
 			}
 		case ahmp.MEM_T:

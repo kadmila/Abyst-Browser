@@ -74,6 +74,7 @@ func (h *AbyssHost) onJNI(
 	JNI *and.JNI,
 	peer_session and.ANDPeerSession,
 	participating_worlds map[uuid.UUID]*and.World,
+	joiner_info and.ANDFullPeerSessionInfo,
 ) error {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
@@ -82,7 +83,7 @@ func (h *AbyssHost) onJNI(
 	if !ok {
 		return nil
 	}
-	world.RST(events, peer_session)
+	world.JNI(events, peer_session, joiner_info)
 	h.handleANDEvent(events)
 	return nil
 }
