@@ -14,8 +14,10 @@ import (
 	"encoding/pem"
 	"math/big"
 	"net/netip"
+	"net/url"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/kadmila/Abyss-Browser/abyss_core/tools/functional"
 )
 
@@ -262,25 +264,26 @@ func (r *AbyssRootSecret) NewTLSIdentity() (*TLSIdentity, error) {
 // the peer's address candidates. The certificate is signed by the peer's root key
 // and has CN = "loc.{peer_id}".
 //
-// The addresses are encoded in the certificate with SAN extension
-func (r *AbyssRootSecret) NewAddressCertificate(addresses []netip.AddrPort) (*x509.Certificate, error) {
+// The addresses are encoded in the certificate with SAN extension URI type
+func (r *AbyssRootSecret) NewAddressCertificate(addresses []netip.AddrPort) (string, error) {
 	// Generate a temporary key pair for the address certificate
 	dummy_public_key, _, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128) // 2^128
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	// Convert addresses to standard SAN format
-	// Using RFC 3986: DNS names can contain IP addresses
-	// Format as IP:port for both IPv4 and IPv6 for consistency
-	address_str := functional.Filter(addresses, func(addr netip.AddrPort) string {
-		return addr.String()
+	// Convert addresses to standard URI format
+	address_urls := functional.Filter(addresses, func(addr netip.AddrPort) *url.URL {
+		return &url.URL{
+			Scheme: "udp",
+			Host:   addr.String(),
+		}
 	})
 
 	now := time.Now()
@@ -297,26 +300,78 @@ func (r *AbyssRootSecret) NewAddressCertificate(addresses []netip.AddrPort) (*x5
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		IsCA:                  false,
 		BasicConstraintsValid: true,
-		DNSNames:              address_str,
+		URIs:                  address_urls,
 	}
 
 	loc_derBytes, err := x509.CreateCertificate(rand.Reader, &loc_template, r.root_self_cert_x509, dummy_public_key, r.root_priv_key)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	loc_cert, err := x509.ParseCertificate(loc_derBytes)
+	// Encode to PEM format
+	var loc_pem_buf bytes.Buffer
+	err = pem.Encode(&loc_pem_buf, &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: loc_derBytes,
+	})
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	// // debug: Verify signature (sanity check)
-	// err = loc_cert.CheckSignatureFrom(r.root_self_cert_x509)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	return loc_pem_buf.String(), nil
+}
 
-	return loc_cert, nil
+// NewWorldSessionCertificate creates a short-lived certificate (< 10 min) for a world session.
+// The certificate is signed by the peer's root key and has CN = "{world_id}.{session_id}.world.{peer_id}".
+// The environment URL is encoded in the certificate with SAN extension URI type (single entry).
+func (r *AbyssRootSecret) NewWorldSessionCertificate(world_id uuid.UUID, session_id uuid.UUID, env_url *url.URL) (string, error) {
+	dummy_public_key, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return "", err
+	}
+
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128) // 2^128
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return "", err
+	}
+
+	// Construct subject CommonName: {world_id}.{session_id}.world.{peer_id}
+	subject_cn := world_id.String() + "." + session_id.String() + ".world." + r.id
+
+	now := time.Now()
+	world_template := x509.Certificate{
+		Issuer: pkix.Name{
+			CommonName: r.id,
+		},
+		Subject: pkix.Name{
+			CommonName: subject_cn,
+		},
+		NotBefore:             now.Add(-1 * time.Second), // 1-sec backdate for clock skew
+		NotAfter:              now.Add(50 * time.Minute), // < 1 hour validity
+		SerialNumber:          serialNumber,
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		IsCA:                  false,
+		BasicConstraintsValid: true,
+		URIs:                  []*url.URL{env_url}, // Single URI entry
+	}
+
+	world_derBytes, err := x509.CreateCertificate(rand.Reader, &world_template, r.root_self_cert_x509, dummy_public_key, r.root_priv_key)
+	if err != nil {
+		return "", err
+	}
+
+	// Encode to PEM format
+	var world_pem_buf bytes.Buffer
+	err = pem.Encode(&world_pem_buf, &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: world_derBytes,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return world_pem_buf.String(), nil
 }
 
 func (r *AbyssRootSecret) ID() string                         { return r.id }
