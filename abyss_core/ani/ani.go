@@ -117,7 +117,7 @@ type IAbyssPeer interface {
 // redirect/cache/cookie handling mechanism.
 // This **not** compatible with standard http client, and only processes abyst URL.
 type IAbystClient interface {
-	Get(url string) (resp *http.Response, err error)
-	Head(url string) (resp *http.Response, err error)
-	Post(url, contentType string, body io.Reader) (resp *http.Response, err error)
+	Get(id string, path string) (resp *http.Response, err error)
+	Head(id string, path string) (resp *http.Response, err error)
+	Post(id string, path, contentType string, body io.Reader) (resp *http.Response, err error)
 }

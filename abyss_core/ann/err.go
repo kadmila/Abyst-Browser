@@ -19,6 +19,8 @@ const (
 
 	AbyssQuicClose    quic.ApplicationErrorCode = 0x1100
 	AbyssQuicOverride quic.ApplicationErrorCode = 0x1101
+
+	AbystQuicNoAbyss quic.ApplicationErrorCode = 0x2000
 )
 
 //// Enums For Error Types

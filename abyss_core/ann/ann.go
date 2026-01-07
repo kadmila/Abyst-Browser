@@ -7,6 +7,7 @@ package ann
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -21,6 +22,7 @@ import (
 	"github.com/kadmila/Abyss-Browser/abyss_core/config"
 	"github.com/kadmila/Abyss-Browser/abyss_core/sec"
 	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
 )
 
 type backLogEntry struct {
@@ -204,6 +206,16 @@ MAIN_LOOP:
 		case sec.NextProtoAbyss:
 			n.serve_wg.Add(1)
 			go n.serveRoutine(connection)
+		case http3.NextProtoH3:
+			// get ephemeral TLS certificate
+			tls_info := connection.ConnectionState().TLS
+			client_tls_cert := tls_info.PeerCertificates[0]
+			peer_id, ok := n.registry.GetPeerIdFromTlsCertificate(client_tls_cert)
+			if !ok {
+				connection.CloseWithError(AbystQuicNoAbyss, "no abyss connection")
+				break
+			}
+			n.abyst_hub.ServeConnection(connection, peer_id)
 		default:
 			connection.CloseWithError(0, "unsupported application layer protocol")
 		}
@@ -325,8 +337,17 @@ func (n *AbyssNode) ConfigAbystGateway(config string) error {
 	return n.abyst_hub.SetInternalMuxFromJson(config)
 }
 
-func (n *AbyssNode) NewAbystClient() (ani.IAbystClient, error) {
-	return nil, nil
+func (n *AbyssNode) AbystDial(
+	ctx context.Context,
+	addr string,
+	_ *tls.Config, _ *quic.Config,
+) (quic.EarlyConnection, error) {
+	// TODO
+	return nil, errors.ErrUnsupported
+}
+
+func (n *AbyssNode) NewAbystClient() *abyst.AbystClient {
+	return abyst.NewAbystClient(n)
 }
 
 func (n *AbyssNode) NewCollocatedHttp3Client() (*http.Client, error) {

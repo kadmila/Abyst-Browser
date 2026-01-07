@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/kadmila/Abyss-Browser/abyss_core/abyst"
 	"github.com/kadmila/Abyss-Browser/abyss_core/and"
 	"github.com/kadmila/Abyss-Browser/abyss_core/ani"
 	"github.com/kadmila/Abyss-Browser/abyss_core/ann"
@@ -138,10 +139,10 @@ func (h *AbyssHost) HandshakeKeyCertificate() string       { return h.net.Handsh
 func (h *AbyssHost) AppendKnownPeer(root_cert string, handshake_info_cert string) error {
 	return h.net.AppendKnownPeer(root_cert, handshake_info_cert)
 }
-func (h *AbyssHost) EraseKnownPeer(id string)                  { h.net.EraseKnownPeer(id) }
-func (h *AbyssHost) Dial(id string) error                      { return h.net.Dial(id) }
-func (h *AbyssHost) ConfigAbystGateway(config string) error    { return h.net.ConfigAbystGateway(config) }
-func (h *AbyssHost) NewAbystClient() (ani.IAbystClient, error) { return h.net.NewAbystClient() }
+func (h *AbyssHost) EraseKnownPeer(id string)               { h.net.EraseKnownPeer(id) }
+func (h *AbyssHost) Dial(id string) error                   { return h.net.Dial(id) }
+func (h *AbyssHost) ConfigAbystGateway(config string) error { return h.net.ConfigAbystGateway(config) }
+func (h *AbyssHost) NewAbystClient() *abyst.AbystClient     { return h.net.NewAbystClient() }
 func (h *AbyssHost) NewCollocatedHttp3Client() (*http.Client, error) {
 	return h.net.NewCollocatedHttp3Client()
 }

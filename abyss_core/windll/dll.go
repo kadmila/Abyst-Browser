@@ -237,16 +237,12 @@ func Host_ConfigAbystGateway(
 }
 
 //export Host_NewAbystClient
-func Host_NewAbystClient(h C.uintptr_t, out *C.uintptr_t) C.uintptr_t {
+func Host_NewAbystClient(h C.uintptr_t) C.uintptr_t {
 	host := cgo.Handle(h).Value().(*ahost.AbyssHost)
-	client, err := host.NewAbystClient()
-	if err != nil {
-		return marshalError(err)
-	}
+	client := host.NewAbystClient()
 
 	watchdog.CountHandleExport()
-	*out = C.uintptr_t(cgo.NewHandle(client))
-	return 0
+	return C.uintptr_t(cgo.NewHandle(client))
 }
 
 //export CloseAbyssClient
