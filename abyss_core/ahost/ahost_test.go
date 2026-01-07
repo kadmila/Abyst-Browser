@@ -6,8 +6,31 @@ import (
 	"time"
 
 	"github.com/kadmila/Abyss-Browser/abyss_core/ahost"
+	"github.com/kadmila/Abyss-Browser/abyss_core/and"
 	"github.com/kadmila/Abyss-Browser/abyss_core/sec"
 )
+
+// expectEvent waits for an event of type T.
+// Returns the event on success or fails the test on timeout.
+func expectEvent[T any](t *testing.T, event_ch <-chan any) T {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+	defer cancel()
+
+	var zero T
+	select {
+	case <-ctx.Done():
+		t.Fatalf("timeout waiting for event %T", zero)
+		return zero
+	case event := <-event_ch:
+		if typed_event, ok := event.(T); ok {
+			return typed_event
+		}
+		t.Fatalf("unexpected event %T", event)
+		return zero
+	}
+}
 
 func TestPeerConnectedEvent(t *testing.T) {
 	// Construct two hosts
@@ -61,21 +84,92 @@ func TestPeerConnectedEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// This should raise EPeerConnected event in one second
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*1)
-	defer cancel()
+	// This should raise EPeerConnected event
+	expectEvent[*ahost.EPeerConnected](t, host_A.GetEventCh())
+	expectEvent[*ahost.EPeerConnected](t, host_B.GetEventCh())
+}
 
-	peer_connected := false
-	for !peer_connected {
-		select {
-		case <-ctx.Done():
-			t.Fatal("timeout: EPeerConnected event not received within 1 second")
-		case event := <-host_A.GetEventCh():
-			if e, ok := event.(*ahost.EPeerConnected); ok {
-				if e.Peer.ID() == host_B.ID() {
-					peer_connected = true
-				}
-			}
-		}
+func TestJoinWorld(t *testing.T) {
+	// Construct two hosts
+	root_key_A, err := sec.NewRootPrivateKey()
+	if err != nil {
+		t.Fatal(err)
 	}
+	host_A, err := ahost.NewAbyssHost(root_key_A)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	root_key_B, err := sec.NewRootPrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	host_B, err := ahost.NewAbyssHost(root_key_B)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Bind both hosts
+	err = host_A.Bind()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = host_B.Bind()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Start serving
+	go host_A.Serve()
+	go host_B.Serve()
+	defer host_A.Close()
+	defer host_B.Close()
+
+	// Exchange peer information
+	err = host_A.AppendKnownPeer(host_B.RootCertificate(), host_B.HandshakeKeyCertificate())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = host_B.AppendKnownPeer(host_A.RootCertificate(), host_A.HandshakeKeyCertificate())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Host A opens a world
+	world_A := host_A.OpenWorld("abyss://example.com/test")
+	if world_A == nil {
+		t.Fatal("world should not be nil")
+	}
+
+	// Expose world to default path "/"
+	host_A.ExposeWorldForJoin(world_A, "/")
+
+	// Wait for world enter event on host A
+	expectEvent[*and.EANDWorldEnter](t, host_A.GetEventCh())
+
+	// Host B dials host A
+	err = host_B.Dial(host_A.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for peer connection on host B
+	peer_B_to_A := expectEvent[*ahost.EPeerConnected](t, host_B.GetEventCh())
+	expectEvent[*ahost.EPeerConnected](t, host_A.GetEventCh())
+
+	// Host B joins the world at path "/"
+	host_B.JoinWorld(peer_B_to_A.Peer, "/")
+
+	// Wait for session request event on host A (host A should receive join request)
+	session_request := expectEvent[*and.EANDSessionRequest](t, host_A.GetEventCh())
+
+	// Host A accepts the session request
+	host_A.AcceptWorldSession(world_A, session_request.Peer, session_request.SessionID)
+
+	// Host B should receive EANDWorldEnter event
+	expectEvent[*and.EANDWorldEnter](t, host_B.GetEventCh())
+
+	// Both hosts should receive EANDSessionReady event
+	expectEvent[*and.EANDSessionReady](t, host_A.GetEventCh())
+	expectEvent[*and.EANDSessionReady](t, host_B.GetEventCh())
 }

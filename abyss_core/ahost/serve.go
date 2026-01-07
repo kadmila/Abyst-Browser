@@ -48,6 +48,7 @@ func (h *AbyssHost) servePeer(peer ani.IAbyssPeer) error {
 		if err != nil {
 			return err
 		}
+		//fmt.Println("recv: ", msg.Type.String(), h.ID())
 		switch msg.Type {
 		case ahmp.JN_T:
 			JN, err := tryParseAhmp[*and.RawJN](&msg)

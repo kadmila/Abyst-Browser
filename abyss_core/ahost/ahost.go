@@ -116,11 +116,20 @@ func (h *AbyssHost) OpenWorld(world_url string) *and.World {
 	return result
 }
 
-func (h *AbyssHost) JoinWorld(peer ani.IAbyssPeer, path string) {
+func (h *AbyssHost) JoinWorld(peer ani.IAbyssPeer, path string) (*and.World, error) {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
-	h.and.JoinWorld(peer, path)
+	result, err := h.and.JoinWorld(peer, path)
+	if err != nil {
+		return result, err
+	}
+
+	// JoinWorld forces the join target partcipates in my local AND world
+	h.peer_participating_worlds[peer.ID()][result.SessionID()] = result
+	// don't call world.PeerConnected, as the join target is handled specially.
+
+	return result, err
 }
 
 // AcceptWorldSession accepts a peer session request for a world.

@@ -265,15 +265,15 @@ func (w *World) removeEntry(events *ANDEventQueue, entry *peerWorldSessionState,
 func (w *World) tryOverwritePeerSession(events *ANDEventQueue, entry *peerWorldSessionState, session_id uuid.UUID, timestamp time.Time) bool {
 	if entry.TimeStamp.Before(timestamp) {
 		switch entry.state {
-		case WS_DC_JNI:
-			// no send
 		case WS_JN:
 			w.sendJDN(entry, JNC_OVERRUN, JNM_OVERRUN)
 		case WS_MEM:
 			w.member_count--
 			w.sendRST(entry, JNC_OVERRUN, JNM_OVERRUN)
 		default:
-			w.sendRST(entry, JNC_OVERRUN, JNM_OVERRUN)
+			if entry.SessionID != uuid.Nil {
+				w.sendRST(entry, JNC_OVERRUN, JNM_OVERRUN)
+			}
 		}
 		if entry.is_session_requested {
 			events.Push(&EANDSessionClose{
@@ -398,11 +398,12 @@ func (w *World) JOK(events *ANDEventQueue, peer_session ANDPeerSession, timestam
 
 	// normal case
 	if w.join_target != nil && w.join_target.Peer == peer_session.Peer {
+		first_member := w.join_target
+
 		w.join_target = nil
 		w.join_path = ""
 		w.url = world_url
 
-		first_member := w.join_target
 		first_member.state = WS_MEM
 		w.member_count++
 		first_member.SessionID = peer_session.SessionID
@@ -415,6 +416,10 @@ func (w *World) JOK(events *ANDEventQueue, peer_session ANDPeerSession, timestam
 		events.Push(&EANDWorldEnter{
 			World: w,
 			URL:   world_url,
+		})
+		events.Push(&EANDSessionReady{
+			World:          w,
+			ANDPeerSession: first_member.ANDPeerSession(),
 		})
 		events.Push(&EANDTimerRequest{
 			World:    w,
@@ -609,6 +614,10 @@ func (w *World) AcceptSession(events *ANDEventQueue, peer_session ANDPeerSession
 		w.sendJOK_JNI(entry)
 		entry.state = WS_MEM
 		w.member_count++
+		events.Push(&EANDSessionReady{
+			World:          w,
+			ANDPeerSession: peer_session,
+		})
 	case WS_JNI:
 		w.sendMEM(entry)
 		entry.state = WS_TMEM
