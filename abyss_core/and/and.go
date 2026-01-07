@@ -8,8 +8,6 @@
 package and
 
 import (
-	"net/netip"
-
 	"github.com/kadmila/Abyss-Browser/abyss_core/ani"
 	"github.com/kadmila/Abyss-Browser/abyss_core/watchdog"
 )
@@ -32,8 +30,8 @@ func (a *AND) OpenWorld(events *ANDEventQueue, world_url string) *World {
 	return newWorld_Open(events, a, world_url)
 }
 
-func (a *AND) JoinWorld(target ani.IAbyssPeer, target_addrs []netip.AddrPort, path string) (*World, error) {
+func (a *AND) JoinWorld(target ani.IAbyssPeer, path string) (*World, error) {
 	watchdog.Info("appCall::JoinWorld " + target.ID() + " " + path)
 
-	return newWorld_Join(a, target, target_addrs, path) //should immediate return
+	return newWorld_Join(a, target, path) //should immediate return
 }

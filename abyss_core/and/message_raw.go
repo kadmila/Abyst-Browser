@@ -21,7 +21,7 @@ type RawSessionInfoForDiscovery struct {
 func MakeRawSessionInfoForDiscovery(entry *peerWorldSessionState) RawSessionInfoForDiscovery {
 	return RawSessionInfoForDiscovery{
 		PeerID:                     entry.Peer.ID(),
-		AddressCandidates:          functional.Filter(entry.AddressCandidates, func(a netip.AddrPort) string { return a.String() }),
+		AddressCandidates:          functional.Filter(entry.Peer.AddressCandidates(), func(a netip.AddrPort) string { return a.String() }),
 		SessionID:                  entry.SessionID.String(),
 		TimeStamp:                  entry.TimeStamp.UnixMilli(),
 		RootCertificateDer:         entry.Peer.RootCertificateDer(),

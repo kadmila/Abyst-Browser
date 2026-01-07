@@ -27,8 +27,8 @@ type INetworkService interface {
 
 	ListenAndServe() error
 
-	AppendKnownPeer(root_cert string, handshake_key_cert string) error
-	AppendKnownPeerDer(root_cert []byte, handshake_key_cert []byte) error
+	AppendKnownPeer(root_cert string, handshake_info_cert string) error
+	AppendKnownPeerDer(root_cert []byte, handshake_info_cert []byte) error
 
 	GetAbyssPeerChannel() chan IANDPeer //wait for established abyss mutual connection
 

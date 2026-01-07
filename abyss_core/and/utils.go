@@ -107,8 +107,7 @@ func (s ANDSessionState) String() string {
 type peerWorldSessionState struct {
 	state                ANDSessionState
 	PeerID               string
-	Peer                 ani.IAbyssPeer   // this is nil if state is WS_DN_JNI
-	AddressCandidates    []netip.AddrPort // this is shared with ANDFullPeerSession
+	Peer                 ani.IAbyssPeer // this is nil if state is WS_DN_JNI
 	SessionID            uuid.UUID
 	TimeStamp            time.Time
 	is_session_requested bool // this is true if EANDSessionRequest was fired.

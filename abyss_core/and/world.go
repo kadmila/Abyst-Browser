@@ -2,7 +2,6 @@ package and
 
 import (
 	"math/rand"
-	"net/netip"
 	"time"
 
 	"github.com/google/uuid"
@@ -51,15 +50,14 @@ func newWorld_Open(events *ANDEventQueue, origin *AND, world_url string) *World 
 	return result
 }
 
-func newWorld_Join(origin *AND, target ani.IAbyssPeer, target_addrs []netip.AddrPort, path string) (*World, error) {
+func newWorld_Join(origin *AND, target ani.IAbyssPeer, path string) (*World, error) {
 	result := &World{
 		o:         origin,
 		lsid:      uuid.New(),
 		timestamp: time.Now(),
 		join_target: &peerWorldSessionState{
-			PeerID:            target.ID(),
-			Peer:              target,
-			AddressCandidates: target_addrs,
+			PeerID: target.ID(),
+			Peer:   target,
 		},
 		join_path: path,
 		url:       "",
@@ -327,7 +325,7 @@ func (w *World) mustBeMemberCheck(events *ANDEventQueue, peer_session ANDPeerSes
 	return entry, true
 }
 
-func (w *World) PeerConnected(events *ANDEventQueue, peer ani.IAbyssPeer, addrs []netip.AddrPort) {
+func (w *World) PeerConnected(events *ANDEventQueue, peer ani.IAbyssPeer) {
 	if w.is_closed {
 		return
 	}
@@ -347,7 +345,6 @@ func (w *World) PeerConnected(events *ANDEventQueue, peer ani.IAbyssPeer, addrs 
 		})
 		entry.state = WS_JNI
 		entry.Peer = peer
-		entry.AddressCandidates = addrs
 		events.Push(&EANDSessionRequest{
 			World:          w,
 			ANDPeerSession: entry.ANDPeerSession(),
@@ -358,10 +355,9 @@ func (w *World) PeerConnected(events *ANDEventQueue, peer ani.IAbyssPeer, addrs 
 
 	// new entry
 	w.entries[peer.ID()] = &peerWorldSessionState{
-		state:             WS_CC,
-		PeerID:            peer.ID(),
-		Peer:              peer,
-		AddressCandidates: addrs,
+		state:  WS_CC,
+		PeerID: peer.ID(),
+		Peer:   peer,
 	}
 }
 

@@ -23,8 +23,7 @@ func (h *AbyssHost) onJN(
 	// JN forces appending participating_worlds.
 	if _, ok := participating_worlds[world.SessionID()]; !ok {
 		participating_worlds[world.SessionID()] = world
-		addrs := h.address_candidates[peer_session.Peer.ID()]
-		world.PeerConnected(events, peer_session.Peer, addrs)
+		world.PeerConnected(events, peer_session.Peer)
 		h.handleANDEvent(events)
 	}
 
@@ -106,8 +105,7 @@ func (h *AbyssHost) onMEM(
 		}
 
 		participating_worlds[world.SessionID()] = world
-		addrs := h.address_candidates[peer_session.Peer.ID()]
-		world.PeerConnected(events, peer_session.Peer, addrs)
+		world.PeerConnected(events, peer_session.Peer)
 		h.handleANDEvent(events)
 	}
 

@@ -5,7 +5,6 @@ import (
 
 	"github.com/kadmila/Abyss-Browser/abyss_core/and"
 	"github.com/kadmila/Abyss-Browser/abyss_core/ani"
-	"github.com/kadmila/Abyss-Browser/abyss_core/tools/functional"
 )
 
 // peerReservation represents a peer that needs to be connected to a world
@@ -41,10 +40,8 @@ func (h *AbyssHost) handleANDEvent(events *and.ANDEventQueue) {
 				if err := h.net.AppendKnownPeerDer(e.RootCertificateDer, e.HandshakeKeyCertificateDer); err != nil {
 					// TODO: handle AppendKnownPeer failure.
 				}
-				functional.Foreach(e.AddressCandidates, func(addr netip.AddrPort) {
-					h.net.Dial(e.PeerID, addr)
-					// TODO: handle Dial failure.
-				})
+				h.net.Dial(e.PeerID)
+				// TODO: handle Dial failure.
 			}
 
 		case *and.EANDPeerDiscard:
@@ -84,7 +81,7 @@ func (h *AbyssHost) handleANDEvent(events *and.ANDEventQueue) {
 
 	// Call PeerConnected sequentially after handling all events
 	for _, res := range reservations {
-		res.world.PeerConnected(events, res.peer, res.addrs)
+		res.world.PeerConnected(events, res.peer)
 		h.handleANDEvent(events)
 	}
 }

@@ -19,6 +19,7 @@ type IAbyssPeerIdentity interface {
 	RootCertificateDer() []byte
 	HandshakeKeyCertificate() string //pem
 	HandshakeKeyCertificateDer() []byte
+	AddressCandidates() []netip.AddrPort
 	IssueTime() time.Time
 }
 
@@ -50,8 +51,8 @@ type IAbyssPeerIdentity interface {
 //
 // 	// AppendKnownPeer adds peer information for mutual auth.
 // 	// This is mendatory before Dial() and Accept().
-// 	AppendKnownPeer(root_cert string, handshake_key_cert string) error
-// 	AppendKnownPeerDer(root_cert []byte, handshake_key_cert []byte) error
+// 	AppendKnownPeer(root_cert string, handshake_info_cert string) error
+// 	AppendKnownPeerDer(root_cert []byte, handshake_info_cert []byte) error
 //
 // 	// EraseKnownPeer removes peer information.
 // 	// The peer cannot be dialed until the peer information is re-provided.

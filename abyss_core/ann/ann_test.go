@@ -66,17 +66,13 @@ func TestNewAbyssNode(t *testing.T) {
 	}
 
 	// Mutual dialing (all address candidates)
-	for _, v := range node_A.LocalAddrCandidates() {
-		err = node_B.Dial(node_A.ID(), v)
-		if err != nil {
-			t.Fatal(err)
-		}
+	err = node_B.Dial(node_A.ID())
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, v := range node_B.LocalAddrCandidates() {
-		err = node_A.Dial(node_B.ID(), v)
-		if err != nil {
-			t.Fatal(err)
-		}
+	err = node_A.Dial(node_B.ID())
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	ctx, ctxcancel := context.WithTimeout(context.Background(), time.Second)
@@ -199,12 +195,8 @@ func TestReconnect(t *testing.T) {
 		ctx, ctxcancel := context.WithTimeout(context.Background(), time.Second)
 		defer ctxcancel()
 
-		for _, v := range node_B.LocalAddrCandidates() {
-			node_A.Dial(node_B.ID(), v)
-		}
-		for _, v := range node_A.LocalAddrCandidates() {
-			node_B.Dial(node_A.ID(), v)
-		}
+		node_A.Dial(node_B.ID())
+		node_B.Dial(node_A.ID())
 
 		var peer_A_B ani.IAbyssPeer
 		for {
@@ -286,10 +278,14 @@ func TestDialTimeout(t *testing.T) {
 
 	root_key_B, _ := sec.NewRootPrivateKey()
 	node_B, _ := ann.NewAbyssNode(root_key_B)
+	node_B.Listen()
+
+	// force invalid address
+	node_B.UpdateHandshakeInfo([]netip.AddrPort{netip.MustParseAddrPort("127.0.0.1:10000")})
 
 	node_A.AppendKnownPeer(node_B.RootCertificate(), node_B.HandshakeKeyCertificate())
 
-	err := node_A.Dial(node_B.ID(), netip.MustParseAddrPort("127.0.0.1:10000"))
+	err := node_A.Dial(node_B.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,9 +311,12 @@ func TestDialTimeout2(t *testing.T) {
 	node_B, _ := ann.NewAbyssNode(root_key_B)
 	node_B.Listen()
 
+	// force 1 address candidate (for testing)
+	node_B.UpdateHandshakeInfo([]netip.AddrPort{node_B.LocalAddrCandidates()[1]})
+
 	node_A.AppendKnownPeer(node_B.RootCertificate(), node_B.HandshakeKeyCertificate())
 
-	err := node_A.Dial(node_B.ID(), node_B.LocalAddrCandidates()[1])
+	err := node_A.Dial(node_B.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,9 +343,12 @@ func TestDialLatePeerInfo(t *testing.T) {
 	node_B.Listen()
 	go node_B.Serve()
 
+	// force 1 address candidate (for testing)
+	node_B.UpdateHandshakeInfo([]netip.AddrPort{node_B.LocalAddrCandidates()[1]})
+
 	node_A.AppendKnownPeer(node_B.RootCertificate(), node_B.HandshakeKeyCertificate())
 
-	err := node_A.Dial(node_B.ID(), node_B.LocalAddrCandidates()[1])
+	err := node_A.Dial(node_B.ID())
 	if err != nil {
 		t.Fatal(err)
 	}

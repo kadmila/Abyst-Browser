@@ -3,7 +3,6 @@ package ann
 import (
 	"crypto/x509"
 	"net/netip"
-	"slices"
 	"sync"
 	"time"
 
@@ -20,7 +19,6 @@ type dialHistory struct {
 type AbyssPeerRegistry struct {
 	mtx         sync.Mutex
 	known       map[string]*sec.AbyssPeerIdentity
-	dialed      map[string]dialHistory
 	peer_id_cnt uint64
 	connected   map[string]*AbyssPeer
 	tls_certs   map[[32]byte]string // for abyst
@@ -29,26 +27,29 @@ type AbyssPeerRegistry struct {
 func NewAbyssPeerRegistry() *AbyssPeerRegistry {
 	return &AbyssPeerRegistry{
 		known:     make(map[string]*sec.AbyssPeerIdentity),
-		dialed:    make(map[string]dialHistory),
 		connected: make(map[string]*AbyssPeer),
 		tls_certs: make(map[[32]byte]string),
 	}
 }
 
-func (r *AbyssPeerRegistry) UpdatePeerIdentity(identity *sec.AbyssPeerIdentity) {
+func (r *AbyssPeerRegistry) UpdatePeerIdentity(root_cert *x509.Certificate, handshake_info *x509.Certificate) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	// when there is an old identity, replace it and return.
-	old_identity, ok := r.known[identity.ID()]
-	if ok && old_identity.IssueTime().After(identity.IssueTime()) {
+	peer_id := root_cert.Issuer.CommonName
+
+	// when there is an old identity, update it and return.
+	old_identity, ok := r.known[peer_id]
+	if ok {
+		old_identity.UpdateHandshakeInfo(handshake_info)
 		return
 	}
 
-	r.known[identity.ID()] = identity
-
-	// peer identity updated - new handshake key, all old ongoing dials will fail.
-	delete(r.dialed, identity.ID())
+	new_identity, err := sec.NewAbyssPeerIdentity(root_cert, handshake_info)
+	if err != nil {
+		// TODO
+	}
+	r.known[peer_id] = new_identity
 }
 
 // RemovePeerIdentity removes every information for the peer, and
@@ -61,7 +62,6 @@ func (r *AbyssPeerRegistry) RemovePeerIdentity(id string) {
 	defer r.mtx.Unlock()
 
 	delete(r.known, id)
-	delete(r.dialed, id)
 
 	// For entries of r.connected, we don't directly delete them.
 	// Instead, cut the connection and let the client-side Close() call handle it.
@@ -102,7 +102,7 @@ func (r *AbyssPeerRegistry) GetPeerIdentityIfAcceptable(id string) (*sec.AbyssPe
 // GetPeerIdentityIfDialable behaves like GetPeerIdentityIfAcceptable.
 // As there is no occasion where a node binds to multiple ports in same host,
 // we only compare IP addresses.
-func (r *AbyssPeerRegistry) GetPeerIdentityIfDialable(id string, addr netip.Addr) (*sec.AbyssPeerIdentity, RegistryEntryStatus) {
+func (r *AbyssPeerRegistry) GetPeerIdentityIfDialable(id string) (*sec.AbyssPeerIdentity, RegistryEntryStatus) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
@@ -117,24 +117,6 @@ func (r *AbyssPeerRegistry) GetPeerIdentityIfDialable(id string, addr netip.Addr
 		return nil, RE_Redundant
 	}
 
-	// There is no need to dial the same IP address twice.
-	history, ok := r.dialed[id]
-	if ok {
-		for _, v := range history.addresses {
-			if v.Compare(addr) == 0 {
-				return nil, RE_Redundant
-			}
-		}
-		// not dialed with this address - add entry.
-		history.addresses = append(history.addresses, addr)
-	} else {
-		// not dialed yet - add entry.
-		r.dialed[id] = dialHistory{
-			handshake_key_issue_time: identity.IssueTime(),
-			addresses:                []netip.Addr{addr},
-		}
-	}
-
 	return identity, RE_OK
 }
 
@@ -143,21 +125,7 @@ func (r *AbyssPeerRegistry) ReportDialTermination(identity *sec.AbyssPeerIdentit
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	history, ok := r.dialed[identity.ID()]
-	if !ok || !history.handshake_key_issue_time.Equal(identity.IssueTime()) {
-		// the dialing history expired.
-		return
-	}
-	for i, v := range history.addresses {
-		if v.Compare(addr) != 0 {
-			history.addresses = slices.Delete(history.addresses, i, i+1)
-			break
-		}
-	}
-	if len(history.addresses) == 0 {
-		// remove empty history
-		delete(r.dialed, identity.ID())
-	}
+	//TODO
 }
 
 // TryCompletingPeer numbers the peer and registers it,

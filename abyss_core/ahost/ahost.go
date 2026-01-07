@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/netip"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/kadmila/Abyss-Browser/abyss_core/and"
@@ -29,7 +28,6 @@ type AbyssHost struct {
 	exposed_worlds            map[string]*and.World // JN path -> world
 	peer_participating_worlds map[string]map[uuid.UUID]*and.World
 	peers                     map[string]ani.IAbyssPeer
-	address_candidates        map[string][]netip.AddrPort
 
 	event_ch chan any
 }
@@ -52,18 +50,18 @@ func NewAbyssHost(root_key sec.PrivateKey) (*AbyssHost, error) {
 		exposed_worlds:            make(map[string]*and.World),
 		peer_participating_worlds: make(map[string]map[uuid.UUID]*and.World),
 		peers:                     make(map[string]ani.IAbyssPeer),
-		address_candidates:        make(map[string][]netip.AddrPort),
 
 		event_ch: make(chan any, 1024),
 	}, nil
 }
 
-func (h *AbyssHost) Main() error {
+func (h *AbyssHost) Bind() error {
+	return h.net.Listen()
+}
+
+func (h *AbyssHost) Serve() error {
 	defer h.service_cancelfunc()
 
-	if err := h.net.Listen(); err != nil {
-		return err
-	}
 	go h.net.Serve() // we ignore the return value of Serve()
 	// This is somewhat temporary. Although we expect failure of Serve() will be
 	// bubbled up to the Accept() call, this is a bit lazy.
@@ -78,55 +76,9 @@ func (h *AbyssHost) Main() error {
 			close(h.event_ch)
 			return err
 		}
-
+		h.event_ch <- &EPeerConnected{Peer: peer}
 		go h.servePeer(peer)
 	}
-}
-
-// GetEvent blocks until an event is raised.
-// Possible event types are below:
-/*
-and.EANDWorldEnter
-and.EANDSessionRequest
-and.EANDSessionReady
-and.EANDSessionClose
-and.EANDObjectAppend
-and.EANDObjectDelete
-and.EANDWorldLeave
-EPeerConnected
-EPeerDisconnected
-*/
-func (h *AbyssHost) GetEventCh() <-chan any {
-	return h.event_ch
-}
-
-func (h *AbyssHost) ExposeWorldForJoin(world *and.World, path string) {
-	h.mtx.Lock()
-	defer h.mtx.Unlock()
-
-	other_world, ok := h.exposed_worlds[path]
-	if ok {
-		delete(h.world_path_mapping, other_world.SessionID())
-	}
-	h.exposed_worlds[path] = world
-
-	old_path, ok := h.world_path_mapping[world.SessionID()]
-	if ok {
-		delete(h.exposed_worlds, old_path)
-	}
-	h.world_path_mapping[world.SessionID()] = path
-}
-
-func (h *AbyssHost) HideWorld(world *and.World) {
-	h.mtx.Lock()
-	defer h.mtx.Unlock()
-
-	path, ok := h.world_path_mapping[world.SessionID()]
-	if !ok {
-		return
-	}
-	delete(h.world_path_mapping, world.SessionID())
-	delete(h.exposed_worlds, path)
 }
 
 func (h *AbyssHost) Close() {
@@ -139,20 +91,37 @@ func (h *AbyssHost) LocalAddrCandidates() []netip.AddrPort { return h.net.LocalA
 func (h *AbyssHost) ID() string                            { return h.net.ID() }
 func (h *AbyssHost) RootCertificate() string               { return h.net.RootCertificate() }
 func (h *AbyssHost) HandshakeKeyCertificate() string       { return h.net.HandshakeKeyCertificate() }
-func (h *AbyssHost) IssueTime() time.Time                  { return h.net.IssueTime() }
 
-func (h *AbyssHost) AppendKnownPeer(root_cert string, handshake_key_cert string) error {
-	return h.net.AppendKnownPeer(root_cert, handshake_key_cert)
+func (h *AbyssHost) AppendKnownPeer(root_cert string, handshake_info_cert string) error {
+	return h.net.AppendKnownPeer(root_cert, handshake_info_cert)
 }
 func (h *AbyssHost) EraseKnownPeer(id string)                  { h.net.EraseKnownPeer(id) }
-func (h *AbyssHost) Dial(id string, addr netip.AddrPort) error { return h.net.Dial(id, addr) }
+func (h *AbyssHost) Dial(id string) error                      { return h.net.Dial(id) }
 func (h *AbyssHost) ConfigAbystGateway(config string) error    { return h.net.ConfigAbystGateway(config) }
 func (h *AbyssHost) NewAbystClient() (ani.IAbystClient, error) { return h.net.NewAbystClient() }
 func (h *AbyssHost) NewCollocatedHttp3Client() (*http.Client, error) {
 	return h.net.NewCollocatedHttp3Client()
 }
 
-//// World Session APIs
+//// AND APIs
+
+func (h *AbyssHost) OpenWorld(world_url string) *and.World {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
+
+	events := and.NewANDEventQueue()
+	result := h.and.OpenWorld(events, world_url)
+	h.handleANDEvent(events)
+
+	return result
+}
+
+func (h *AbyssHost) JoinWorld(peer ani.IAbyssPeer, path string) {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
+
+	h.and.JoinWorld(peer, path)
+}
 
 // AcceptWorldSession accepts a peer session request for a world.
 // This creates an event queue, calls World.AcceptSession, and processes resulting events.
@@ -235,4 +204,52 @@ func (h *AbyssHost) WorldObjectDelete(world *and.World, peers []ani.IAbyssPeer, 
 		}
 		world.SendObjectDelete(peer_session, objectIDs)
 	}
+}
+
+/// host features
+
+// GetEvent blocks until an event is raised.
+// Possible event types are below:
+/*
+and.EANDWorldEnter
+and.EANDSessionRequest
+and.EANDSessionReady
+and.EANDSessionClose
+and.EANDObjectAppend
+and.EANDObjectDelete
+and.EANDWorldLeave
+EPeerConnected
+EPeerDisconnected
+*/
+func (h *AbyssHost) GetEventCh() <-chan any {
+	return h.event_ch
+}
+
+func (h *AbyssHost) ExposeWorldForJoin(world *and.World, path string) {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
+
+	other_world, ok := h.exposed_worlds[path]
+	if ok {
+		delete(h.world_path_mapping, other_world.SessionID())
+	}
+	h.exposed_worlds[path] = world
+
+	old_path, ok := h.world_path_mapping[world.SessionID()]
+	if ok {
+		delete(h.exposed_worlds, old_path)
+	}
+	h.world_path_mapping[world.SessionID()] = path
+}
+
+func (h *AbyssHost) HideWorld(world *and.World) {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
+
+	path, ok := h.world_path_mapping[world.SessionID()]
+	if !ok {
+		return
+	}
+	delete(h.world_path_mapping, world.SessionID())
+	delete(h.exposed_worlds, path)
 }

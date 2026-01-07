@@ -113,7 +113,7 @@ func CloseHost(h C.uintptr_t) {
 
 //export Host_Run
 func Host_Run(h C.uintptr_t) {
-	go cgo.Handle(h).Value().(*ahost.AbyssHost).Main()
+	go cgo.Handle(h).Value().(*ahost.AbyssHost).Serve()
 }
 
 //export Host_WaitForEvent
@@ -190,15 +190,15 @@ func Host_HandshakeKeyCertificate(h C.uintptr_t, buf_ptr *C.char, buf_len C.int)
 //export Host_AppendKnownPeer
 func Host_AppendKnownPeer(h C.uintptr_t,
 	root_cert_ptr *C.char, root_cert_len C.int,
-	handshake_key_cert_ptr *C.char, handshake_key_cert_len C.int,
+	handshake_info_cert_ptr *C.char, handshake_info_cert_len C.int,
 ) C.uintptr_t {
 	host := cgo.Handle(h).Value().(*ahost.AbyssHost)
 	root_cert, r_ok := TryUnmarshalBytes(root_cert_ptr, root_cert_len)
-	handshake_key_cert, hs_ok := TryUnmarshalBytes(handshake_key_cert_ptr, handshake_key_cert_len)
+	handshake_info_cert, hs_ok := TryUnmarshalBytes(handshake_info_cert_ptr, handshake_info_cert_len)
 	if !(r_ok && hs_ok) {
 		return marshalError(errors.New("nil arguments"))
 	}
-	return marshalError(host.AppendKnownPeer(string(root_cert), string(handshake_key_cert)))
+	return marshalError(host.AppendKnownPeer(string(root_cert), string(handshake_info_cert)))
 }
 
 //export Host_EraseKnownPeer
@@ -215,19 +215,13 @@ func Host_EraseKnownPeer(h C.uintptr_t, id_ptr *C.char, id_len C.int) C.uintptr_
 //export Host_Dial
 func Host_Dial(h C.uintptr_t,
 	id_ptr *C.char, id_len C.int,
-	addr_ptr *C.char, addr_len C.int,
 ) C.uintptr_t {
 	host := cgo.Handle(h).Value().(*ahost.AbyssHost)
 	id, id_ok := TryUnmarshalBytes(id_ptr, id_len)
-	addr, addr_ok := TryUnmarshalBytes(addr_ptr, addr_len)
-	if !(id_ok && addr_ok) {
+	if !id_ok {
 		return marshalError(errors.New("nil arguments"))
 	}
-	addr_parsed, err := netip.ParseAddrPort(string(addr))
-	if err != nil {
-		return marshalError(err)
-	}
-	return marshalError(host.Dial(string(id), addr_parsed))
+	return marshalError(host.Dial(string(id)))
 }
 
 //export Host_ConfigAbystGateway

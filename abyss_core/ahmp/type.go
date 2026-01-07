@@ -23,7 +23,7 @@ type AHMPMessage struct {
 // Abyss Neigbor Discovery (AND)
 // 0x0000 ~ 0x0FFF
 const (
-	JN_T AHMPMsgType = iota
+	JN_T AHMPMsgType = iota + 1
 	JOK_T
 	JDN_T
 	JNI_T
@@ -40,6 +40,10 @@ const (
 )
 
 // other independent protocols: add 0x1000
+const (
+	// Address certificate update
+	ADDR_CERT_T AHMPMsgType = iota + 0x1000
+)
 
 // Abyss Utility
 const (

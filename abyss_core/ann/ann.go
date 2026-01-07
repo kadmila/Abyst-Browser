@@ -7,6 +7,8 @@ package ann
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"net"
 	"net/http"
@@ -159,6 +161,11 @@ func (n *AbyssNode) Listen() error {
 			)
 		}
 	}
+
+	// update handshake certificate
+	if err := n.UpdateHandshakeInfo(n.local_addr_candidates); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -215,22 +222,27 @@ func (n *AbyssNode) cleanUp(serve_err error) error {
 
 func (n *AbyssNode) LocalAddrCandidates() []netip.AddrPort { return n.local_addr_candidates }
 
-func (n *AbyssNode) AppendKnownPeer(root_cert string, handshake_key_cert string) error {
-	identity, err := sec.NewAbyssPeerIdentityFromPEM(root_cert, handshake_key_cert)
-	if err != nil {
-		return err
+func (n *AbyssNode) AppendKnownPeer(root_cert string, handshake_info_cert string) error {
+	root_self_cert_der, _ := pem.Decode([]byte(root_cert))
+	if root_self_cert_der == nil {
+		return errors.New("failed to parse certificate")
 	}
-
-	n.registry.UpdatePeerIdentity(identity)
-	return nil
+	handshake_info_cert_der, _ := pem.Decode([]byte(handshake_info_cert))
+	if handshake_info_cert_der == nil {
+		return errors.New("failed to parse certificate")
+	}
+	return n.AppendKnownPeerDer(root_self_cert_der.Bytes, handshake_info_cert_der.Bytes)
 }
-func (n *AbyssNode) AppendKnownPeerDer(root_cert []byte, handshake_key_cert []byte) error {
-	identity, err := sec.NewAbyssPeerIdentityFromDER(root_cert, handshake_key_cert)
+func (n *AbyssNode) AppendKnownPeerDer(root_cert []byte, handshake_info_cert []byte) error {
+	root_self_cert_x509, err := x509.ParseCertificate(root_cert)
 	if err != nil {
 		return err
 	}
-
-	n.registry.UpdatePeerIdentity(identity)
+	handshake_info_cert_x509, err := x509.ParseCertificate(handshake_info_cert)
+	if err != nil {
+		return err
+	}
+	n.registry.UpdatePeerIdentity(root_self_cert_x509, handshake_info_cert_x509)
 	return nil
 }
 
@@ -240,39 +252,26 @@ func (n *AbyssNode) EraseKnownPeer(id string) {
 
 // Dial synchronously check for dialing plausibility, and
 // start a goroutine for handshake procedure.
-func (n *AbyssNode) Dial(id string, addr netip.AddrPort) error {
-	// Checks if AbyssNode is not yet closed, and also register for waitgroup.
-	n.close_check_mtx.Lock()
-	close_cause := n.close_cause
-	n.serve_wg.Add(1)
-	n.close_check_mtx.Unlock()
-
-	if close_cause != nil {
-		n.serve_wg.Done()
-		return close_cause
-	}
-
+func (n *AbyssNode) Dial(id string) error {
 	// query identity and dialing permission
 	// TODO: this should be separated.
-	peer_identity, registry_status := n.registry.GetPeerIdentityIfDialable(id, addr.Addr())
+	peer_identity, registry_status := n.registry.GetPeerIdentityIfDialable(id)
 	switch registry_status {
 	case RE_OK:
 		// Proceed.
 	case RE_Redundant:
-		n.serve_wg.Done()
 		return NewHandshakeError(
 			errors.New("redundant dial"),
-			addr,
+			netip.AddrPort{},
 			id,
 			true,
 			HS_Connection,
 			HS_Fail_Redundant,
 		)
 	case RE_UnknownPeer:
-		n.serve_wg.Done()
 		return NewHandshakeError(
 			errors.New("unknown peer"),
-			addr,
+			netip.AddrPort{},
 			id,
 			true,
 			HS_Connection,
@@ -280,7 +279,19 @@ func (n *AbyssNode) Dial(id string, addr netip.AddrPort) error {
 		)
 	}
 
-	go n.dialRoutine(addr, peer_identity)
+	// Checks if AbyssNode is not yet closed, and also register for waitgroup for each goroutine.
+	n.close_check_mtx.Lock()
+	defer n.close_check_mtx.Unlock()
+
+	if n.close_cause != nil {
+		return n.close_cause
+	}
+
+	address_candidates := peer_identity.AddressCandidates()
+	for _, addr := range address_candidates {
+		n.serve_wg.Add(1)
+		go n.dialRoutine(addr, peer_identity)
+	}
 	return nil
 }
 
