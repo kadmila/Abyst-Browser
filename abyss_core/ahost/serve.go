@@ -22,13 +22,9 @@ func tryParseAhmp[RawT parsibleAhmp[T], T any](msg *ahmp.AHMPMessage) (*T, error
 	return raw.TryParse()
 }
 
-func (h *AbyssHost) servePeer(peer ani.IAbyssPeer) error {
-	participating_worlds := make(map[uuid.UUID]*and.World)
-	// We hold this reference to skip h.peer_participating_worlds loopkup.
-	// Still, it should be noted that accessing this local variable is not thread-safe.
-	h.mtx.Lock()
-	h.peer_participating_worlds[peer.ID()] = participating_worlds
-	h.mtx.Unlock()
+func (h *AbyssHost) servePeer(peer ani.IAbyssPeer, participating_worlds map[uuid.UUID]*and.World) error {
+	// participating_worlds is a reference of h.peer_participating_worlds[peer.ID()]
+	// it must be accessed within h.mtx lock
 	events := and.NewANDEventQueue()
 
 	defer func() {

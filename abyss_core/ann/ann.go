@@ -18,6 +18,7 @@ import (
 
 	"github.com/kadmila/Abyss-Browser/abyss_core/abyst"
 	"github.com/kadmila/Abyss-Browser/abyss_core/ani"
+	"github.com/kadmila/Abyss-Browser/abyss_core/config"
 	"github.com/kadmila/Abyss-Browser/abyss_core/sec"
 	"github.com/quic-go/quic-go"
 )
@@ -108,10 +109,14 @@ func (n *AbyssNode) Listen() error {
 	}
 
 	// debug tool
-	n.testConn = NewDelayConn(n.udpConn, time.Millisecond*10, time.Millisecond*20)
-	n.transport = &quic.Transport{Conn: n.testConn}
+	if config.DEBUG {
+		n.testConn = NewDelayConn(n.udpConn, time.Millisecond*10, time.Millisecond*20)
+		n.transport = &quic.Transport{Conn: n.testConn}
+	} else {
+		n.transport = &quic.Transport{Conn: n.udpConn}
+	}
 	// or
-	// n.transport = &quic.Transport{Conn: n.udpConn}
+	//
 	// normal
 
 	n.listener, err = n.transport.Listen(n.NewServerTlsConf(n.registry), newQuicConfig())

@@ -28,6 +28,7 @@ type AbyssHost struct {
 	exposed_worlds            map[string]*and.World // JN path -> world
 	peer_participating_worlds map[string]map[uuid.UUID]*and.World
 	peers                     map[string]ani.IAbyssPeer
+	requested_peers           map[string]map[uuid.UUID]*and.World // EANDPeerRequest origins
 
 	event_ch chan any
 }
@@ -50,6 +51,7 @@ func NewAbyssHost(root_key sec.PrivateKey) (*AbyssHost, error) {
 		exposed_worlds:            make(map[string]*and.World),
 		peer_participating_worlds: make(map[string]map[uuid.UUID]*and.World),
 		peers:                     make(map[string]ani.IAbyssPeer),
+		requested_peers:           make(map[string]map[uuid.UUID]*and.World),
 
 		event_ch: make(chan any, 1024),
 	}, nil
@@ -76,8 +78,26 @@ func (h *AbyssHost) Serve() error {
 			close(h.event_ch)
 			return err
 		}
+
 		h.event_ch <- &EPeerConnected{Peer: peer}
-		go h.servePeer(peer)
+
+		h.mtx.Lock()
+		participating_worlds := make(map[uuid.UUID]*and.World)
+		h.peer_participating_worlds[peer.ID()] = participating_worlds
+
+		request_note, ok := h.requested_peers[peer.ID()]
+		if ok {
+			events := and.NewANDEventQueue()
+			for _, world := range request_note {
+				participating_worlds[world.SessionID()] = world
+				world.PeerConnected(events, peer)
+				h.handleANDEvent(events)
+			}
+			delete(h.requested_peers, peer.ID())
+		}
+		h.mtx.Unlock()
+
+		go h.servePeer(peer, participating_worlds)
 	}
 }
 

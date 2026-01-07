@@ -3,6 +3,7 @@ package ahost
 import (
 	"net/netip"
 
+	"github.com/google/uuid"
 	"github.com/kadmila/Abyss-Browser/abyss_core/and"
 	"github.com/kadmila/Abyss-Browser/abyss_core/ani"
 )
@@ -42,6 +43,15 @@ func (h *AbyssHost) handleANDEvent(events *and.ANDEventQueue) {
 				}
 				h.net.Dial(e.PeerID)
 				// TODO: handle Dial failure.
+
+				// record peer request.
+				request_note, ok := h.requested_peers[e.PeerID]
+				if !ok {
+					request_note = make(map[uuid.UUID]*and.World)
+					h.requested_peers[e.PeerID] = request_note
+				}
+
+				request_note[e.World.SessionID()] = e.World
 			}
 
 		case *and.EANDPeerDiscard:
@@ -57,6 +67,7 @@ func (h *AbyssHost) handleANDEvent(events *and.ANDEventQueue) {
 
 		case *and.EANDWorldEnter:
 			h.event_ch <- e
+			h.worlds[e.World.SessionID()] = e.World
 			// apending world to AbyssHost must be alredy handled by the WorldOpen/WorldJoin caller.
 
 		case *and.EANDWorldLeave:

@@ -77,7 +77,6 @@ func (h *AbyssHost) onJNI(
 ) error {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
-
 	world, ok := participating_worlds[JNI.RecverSessionID]
 	if !ok {
 		return nil
