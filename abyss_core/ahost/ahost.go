@@ -16,8 +16,9 @@ import (
 )
 
 type AbyssHost struct {
-	net *ann.AbyssNode
-	and *and.AND
+	net         *ann.AbyssNode
+	and         *and.AND
+	timer_queue *worldTimerQueue
 
 	service_ctx        context.Context
 	service_cancelfunc context.CancelFunc
@@ -40,8 +41,9 @@ func NewAbyssHost(root_key sec.PrivateKey) (*AbyssHost, error) {
 	}
 	service_ctx, service_cancelfunc := context.WithCancel(context.Background())
 	return &AbyssHost{
-		net: node,
-		and: and.NewAND(node.ID()),
+		net:         node,
+		and:         and.NewAND(node.ID()),
+		timer_queue: newWorldTimerQueue(),
 
 		service_ctx:        service_ctx,
 		service_cancelfunc: service_cancelfunc,
@@ -68,6 +70,26 @@ func (h *AbyssHost) Serve() error {
 	// This is somewhat temporary. Although we expect failure of Serve() will be
 	// bubbled up to the Accept() call, this is a bit lazy.
 
+	// and timer event worker
+	go func() {
+		events := and.NewANDEventQueue()
+		for {
+			wsid, err := h.timer_queue.Wait(h.service_ctx)
+			if err != nil {
+				return
+			}
+
+			h.mtx.Lock()
+			world, ok := h.worlds[wsid]
+			if ok {
+				world.TimerExpire(events)
+				world.CheckSanity()
+				h.handleANDEvent(events)
+			}
+			h.mtx.Unlock()
+		}
+	}()
+
 	for {
 		peer, err := h.net.Accept(h.service_ctx)
 		if err != nil {
@@ -91,6 +113,7 @@ func (h *AbyssHost) Serve() error {
 			for _, world := range request_note {
 				participating_worlds[world.SessionID()] = world
 				world.PeerConnected(events, peer)
+				world.CheckSanity()
 				h.handleANDEvent(events)
 			}
 			delete(h.requested_peers, peer.ID())
@@ -164,6 +187,7 @@ func (h *AbyssHost) AcceptWorldSession(world *and.World, peer ani.IAbyssPeer, pe
 		SessionID: peerSessionID,
 	}
 	world.AcceptSession(events, peer_session)
+	world.CheckSanity()
 	h.handleANDEvent(events)
 }
 
@@ -179,6 +203,7 @@ func (h *AbyssHost) DeclineWorldSession(world *and.World, peer ani.IAbyssPeer, p
 		SessionID: peerSessionID,
 	}
 	world.DeclineSession(events, peer_session, code, message)
+	world.CheckSanity()
 	h.handleANDEvent(events)
 }
 

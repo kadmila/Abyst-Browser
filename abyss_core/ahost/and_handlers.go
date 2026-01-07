@@ -24,10 +24,12 @@ func (h *AbyssHost) onJN(
 	if _, ok := participating_worlds[world.SessionID()]; !ok {
 		participating_worlds[world.SessionID()] = world
 		world.PeerConnected(events, peer_session.Peer)
+		world.CheckSanity()
 		h.handleANDEvent(events)
 	}
 
 	world.JN(events, peer_session, JN.TimeStamp)
+	world.CheckSanity()
 	h.handleANDEvent(events)
 	return nil
 }
@@ -46,6 +48,7 @@ func (h *AbyssHost) onJOK(
 		return nil
 	}
 	world.JOK(events, peer_session, JOK.TimeStamp, JOK.URL, JOK.Neighbors)
+	world.CheckSanity()
 	h.handleANDEvent(events)
 	return nil
 }
@@ -64,6 +67,7 @@ func (h *AbyssHost) onJDN(
 		return nil
 	}
 	world.JDN(events, peer, JDN.Code, JDN.Message)
+	world.CheckSanity()
 	h.handleANDEvent(events)
 	return nil
 }
@@ -82,6 +86,7 @@ func (h *AbyssHost) onJNI(
 		return nil
 	}
 	world.JNI(events, peer_session, joiner_info)
+	world.CheckSanity()
 	h.handleANDEvent(events)
 	return nil
 }
@@ -105,10 +110,12 @@ func (h *AbyssHost) onMEM(
 
 		participating_worlds[world.SessionID()] = world
 		world.PeerConnected(events, peer_session.Peer)
+		world.CheckSanity()
 		h.handleANDEvent(events)
 	}
 
 	world.MEM(events, peer_session, MEM.TimeStamp)
+	world.CheckSanity()
 	h.handleANDEvent(events)
 	return nil
 }
@@ -127,6 +134,7 @@ func (h *AbyssHost) onSJN(
 		return nil
 	}
 	world.SJN(events, peer_session, SJN.MemberInfos)
+	world.CheckSanity()
 	h.handleANDEvent(events)
 	return nil
 }
@@ -145,6 +153,7 @@ func (h *AbyssHost) onCRR(
 		return nil
 	}
 	world.CRR(events, peer_session, CRR.MemberInfos)
+	world.CheckSanity()
 	h.handleANDEvent(events)
 	return nil
 }
@@ -163,6 +172,7 @@ func (h *AbyssHost) onRST(
 		return nil // resetting non-participating world is a no-op.
 	}
 	world.RST(events, peer_session)
+	world.CheckSanity()
 	h.handleANDEvent(events)
 	return nil
 }

@@ -66,10 +66,10 @@ func (w *World) sendMEM(member *peerWorldSessionState) error {
 func (w *World) broadcastSJN() error {
 	sjn_entries := functional.Filter_MtS_ok(w.entries, func(e *peerWorldSessionState) (RawSessionInfoForSJN, bool) {
 		result := MakeRawSessionInfoForSJN(e)
-		if e.state != WS_MEM || time.Since(e.TimeStamp) < time.Second || e.sjnp || e.sjnc > 3 {
+		if e.state != WS_MEM || time.Since(e.TimeStamp) < time.Second || e.sjnp || e.sjnc >= 3 {
 			return result, false
 		}
-		e.sjnc++
+		e.sjnp = true
 		return result, true
 	})
 

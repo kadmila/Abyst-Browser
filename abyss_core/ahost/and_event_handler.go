@@ -63,7 +63,8 @@ func (h *AbyssHost) handleANDEvent(events *and.ANDEventQueue) {
 			delete(participating_worlds, e.World.SessionID())
 
 		case *and.EANDTimerRequest:
-			// TODO: Implement timer request handling
+			//fmt.Println(e.Duration.Milliseconds())
+			h.timer_queue.push(e.World.SessionID(), e.Duration)
 
 		case *and.EANDWorldEnter:
 			h.event_ch <- e

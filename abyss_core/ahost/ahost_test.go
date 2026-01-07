@@ -367,12 +367,16 @@ func TestJoinWorldTransitive(t *testing.T) {
 			t.Fatal("Test timed out")
 		}
 	}
+
+	<-time.After(3 * time.Second)
 }
 
-func TestJoinWorldTransitive5Peers(t *testing.T) {
+func TestJoinWorldTransitiveNPeers(t *testing.T) {
+	N := 100
+
 	// Construct five hosts
-	hosts := make([]*ahost.AbyssHost, 5)
-	for i := 0; i < 5; i++ {
+	hosts := make([]*ahost.AbyssHost, N)
+	for i := 0; i < N; i++ {
 		root_key, err := sec.NewRootPrivateKey()
 		if err != nil {
 			t.Fatal(err)
@@ -385,20 +389,20 @@ func TestJoinWorldTransitive5Peers(t *testing.T) {
 	}
 
 	// Bind all hosts
-	for i := 0; i < 5; i++ {
+	for i := 0; i < N; i++ {
 		if err := hosts[i].Bind(); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Start serving
-	for i := 0; i < 5; i++ {
+	for i := 0; i < N; i++ {
 		go hosts[i].Serve()
 		defer hosts[i].Close()
 	}
 
 	// Exchange peer information: each host knows the next one
-	for i := 0; i < 4; i++ {
+	for i := 0; i < (N - 1); i++ {
 		if err := hosts[i].AppendKnownPeer(hosts[i+1].RootCertificate(), hosts[i+1].HandshakeKeyCertificate()); err != nil {
 			t.Fatal(err)
 		}
@@ -408,14 +412,14 @@ func TestJoinWorldTransitive5Peers(t *testing.T) {
 	}
 
 	// Synchronization channels for each host exposing the world
-	world_exposed := make([]chan struct{}, 5)
-	for i := 0; i < 5; i++ {
+	world_exposed := make([]chan struct{}, N)
+	for i := 0; i < N; i++ {
 		world_exposed[i] = make(chan struct{})
 	}
 
 	// Done channels for each host
-	done := make([]chan error, 5)
-	for i := 0; i < 5; i++ {
+	done := make([]chan error, N)
+	for i := 0; i < N; i++ {
 		done[i] = make(chan error, 1)
 	}
 
@@ -423,13 +427,13 @@ func TestJoinWorldTransitive5Peers(t *testing.T) {
 	go func() {
 		defer func() { done[0] <- nil }()
 
-		world_0 := hosts[0].OpenWorld("abyss://example.com/chain5")
+		world_0 := hosts[0].OpenWorld("abyss://example.com/chainN")
 		hosts[0].ExposeWorldForJoin(world_0, "/")
 		expectEvent[*and.EANDWorldEnter](t, hosts[0].GetEventCh())
 		close(world_exposed[0])
 
-		// Accept 4 peers (hosts 1, 2, 3, 4)
-		for i := 1; i <= 4; i++ {
+		// Accept (N-1) peers (hosts 1, 2, 3, (N-1))
+		for i := 1; i <= (N - 1); i++ {
 			expectEvent[*ahost.EPeerConnected](t, hosts[0].GetEventCh())
 			session_req := expectEvent[*and.EANDSessionRequest](t, hosts[0].GetEventCh())
 			hosts[0].AcceptWorldSession(world_0, session_req.Peer, session_req.SessionID)
@@ -437,8 +441,8 @@ func TestJoinWorldTransitive5Peers(t *testing.T) {
 		}
 	}()
 
-	// Hosts 1-4: All follow the same pattern
-	for host_idx := 1; host_idx <= 4; host_idx++ {
+	// Hosts 1-(N-1): All follow the same pattern
+	for host_idx := 1; host_idx <= (N - 1); host_idx++ {
 		idx := host_idx // Capture for closure
 		go func() {
 			defer func() { done[idx] <- nil }()
@@ -460,8 +464,8 @@ func TestJoinWorldTransitive5Peers(t *testing.T) {
 			hosts[idx].JoinWorld(peer.Peer, "/")
 			world_enter := expectEvent[*and.EANDWorldEnter](t, hosts[idx].GetEventCh())
 
-			// Expose world for next host to join (except host 4)
-			if idx < 4 {
+			// Expose world for next host to join (except host (N-1))
+			if idx < (N - 1) {
 				hosts[idx].ExposeWorldForJoin(world_enter.World, "/")
 				close(world_exposed[idx])
 			}
@@ -505,8 +509,8 @@ func TestJoinWorldTransitive5Peers(t *testing.T) {
 				t.Errorf("Host %d: expected %d EANDSessionRequest, got %d", idx, idx-1, len(session_requests))
 			}
 
-			// Now accept session requests from subsequent joiners (idx+1 to 4)
-			for i := idx + 1; i <= 4; i++ {
+			// Now accept session requests from subsequent joiners (idx+1 to (N-1))
+			for i := idx + 1; i <= (N - 1); i++ {
 				expectEvent[*ahost.EPeerConnected](t, hosts[idx].GetEventCh())
 				session_req := expectEvent[*and.EANDSessionRequest](t, hosts[idx].GetEventCh())
 				hosts[idx].AcceptWorldSession(world_enter.World, session_req.Peer, session_req.SessionID)
@@ -516,8 +520,8 @@ func TestJoinWorldTransitive5Peers(t *testing.T) {
 	}
 
 	// Wait for all goroutines to complete
-	timeout := time.After(time.Second * 10)
-	for i := 0; i < 5; i++ {
+	timeout := time.After(time.Second * 30)
+	for i := 0; i < N; i++ {
 		select {
 		case err := <-done[i]:
 			if err != nil {
@@ -527,4 +531,6 @@ func TestJoinWorldTransitive5Peers(t *testing.T) {
 			t.Fatalf("Test timed out waiting for host %d", i)
 		}
 	}
+
+	<-time.After(10 * time.Second)
 }

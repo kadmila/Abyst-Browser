@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gonum.org/v1/gonum/stat/distuv"
 
 	"github.com/kadmila/Abyss-Browser/abyss_core/ani"
 	"github.com/kadmila/Abyss-Browser/abyss_core/config"
@@ -18,6 +19,8 @@ import (
 type World struct {
 	o *AND //origin
 
+	weibull_dist *distuv.Weibull
+
 	is_closed bool // this is set true after firing EANDWorldLeave.
 
 	lsid         uuid.UUID                         // local world session id
@@ -29,15 +32,19 @@ type World struct {
 	member_count int                               // the number of WS_MEM sessions
 }
 
+const INITIAL_WORLD_TIMER = 1000
+
 func newWorld_Open(events *ANDEventQueue, origin *AND, world_url string) *World {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	result := &World{
-		o:           origin,
-		lsid:        uuid.New(),
-		timestamp:   time.Now(),
-		join_target: nil,
-		join_path:   "",
-		url:         world_url,
-		entries:     make(map[string]*peerWorldSessionState),
+		o:            origin,
+		weibull_dist: &distuv.Weibull{K: 2, Lambda: 2.0, Src: rng},
+		lsid:         uuid.New(),
+		timestamp:    time.Now(),
+		join_target:  nil,
+		join_path:    "",
+		url:          world_url,
+		entries:      make(map[string]*peerWorldSessionState),
 	}
 	events.Push(&EANDWorldEnter{
 		World: result,
@@ -45,16 +52,18 @@ func newWorld_Open(events *ANDEventQueue, origin *AND, world_url string) *World 
 	})
 	events.Push(&EANDTimerRequest{
 		World:    result,
-		Duration: time.Millisecond * 1000,
+		Duration: time.Millisecond * INITIAL_WORLD_TIMER,
 	})
 	return result
 }
 
 func newWorld_Join(origin *AND, target ani.IAbyssPeer, path string) (*World, error) {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	result := &World{
-		o:         origin,
-		lsid:      uuid.New(),
-		timestamp: time.Now(),
+		o:            origin,
+		weibull_dist: &distuv.Weibull{K: 2, Lambda: 2.0, Src: rng},
+		lsid:         uuid.New(),
+		timestamp:    time.Now(),
 		join_target: &peerWorldSessionState{
 			PeerID: target.ID(),
 			Peer:   target,
@@ -82,9 +91,20 @@ func (w *World) CheckSanity() {
 	if w.lsid == uuid.Nil {
 		panic("world lsid nil")
 	}
-	if w.timestamp.Before(time.Now()) {
+	if w.timestamp.After(time.Now()) {
 		panic("invalid world timestamp")
 	}
+	// check member count
+	mem_count := 0
+	for _, entry := range w.entries {
+		if entry.state == WS_MEM {
+			mem_count++
+		}
+	}
+	if mem_count != w.member_count {
+		panic("mem count mismatch")
+	}
+
 	if w.join_target != nil {
 		// joining
 		if w.join_path == "" {
@@ -162,11 +182,11 @@ func (w *World) CheckSanity() {
 				if entry.Peer != nil {
 					panic(entry.state.String() + " must have nil Peer")
 				}
-				if entry.SessionID != uuid.Nil {
-					panic(entry.state.String() + " must have nil session id")
+				if entry.SessionID == uuid.Nil {
+					panic(entry.state.String() + " must have non nil session id")
 				}
-				if !entry.TimeStamp.Equal(time.Time{}) {
-					panic(entry.state.String() + " must have nil TimeStamp")
+				if entry.TimeStamp.Equal(time.Time{}) {
+					panic(entry.state.String() + " must have non nil TimeStamp")
 				}
 				if entry.is_session_requested {
 					panic(entry.state.String() + " is_session_requested true")
@@ -417,17 +437,17 @@ func (w *World) JOK(events *ANDEventQueue, peer_session ANDPeerSession, timestam
 			World: w,
 			URL:   world_url,
 		})
+		events.Push(&EANDTimerRequest{
+			World:    w,
+			Duration: time.Millisecond * INITIAL_WORLD_TIMER,
+		})
 		events.Push(&EANDSessionReady{
 			World:          w,
 			ANDPeerSession: first_member.ANDPeerSession(),
 		})
-		events.Push(&EANDTimerRequest{
-			World:    w,
-			Duration: time.Millisecond * 1000,
-		})
 
 		for _, mem_info := range member_infos {
-			w.jni_mems(events, mem_info)
+			w.jni_mems(events, mem_info, true)
 		}
 		return
 	}
@@ -476,10 +496,10 @@ func (w *World) JNI(events *ANDEventQueue, peer_session ANDPeerSession, member_i
 		return
 	}
 
-	w.jni_mems(events, member_info)
+	w.jni_mems(events, member_info, false)
 }
 
-func (w *World) jni_mems(events *ANDEventQueue, mem_info ANDFullPeerSessionInfo) {
+func (w *World) jni_mems(events *ANDEventQueue, mem_info ANDFullPeerSessionInfo, sjnp bool) {
 	config.IF_DEBUG(func() {
 		if w.join_target != nil {
 			panic("jni_mems: world is joining")
@@ -493,6 +513,7 @@ func (w *World) jni_mems(events *ANDEventQueue, mem_info ANDFullPeerSessionInfo)
 			PeerID:    mem_info.PeerID,
 			SessionID: mem_info.SessionID,
 			TimeStamp: mem_info.TimeStamp,
+			sjnp:      sjnp,
 		}
 		events.Push(&EANDPeerRequest{
 			World:                      w,
@@ -508,6 +529,7 @@ func (w *World) jni_mems(events *ANDEventQueue, mem_info ANDFullPeerSessionInfo)
 	if w.tryOverwritePeerSession(events, mem_entry, mem_info.SessionID, mem_info.TimeStamp) {
 		if mem_entry.Peer == nil {
 			mem_entry.state = WS_DC_JNI
+			mem_entry.sjnp = sjnp
 			events.Push(&EANDPeerRequest{
 				World:                      w,
 				PeerID:                     mem_info.PeerID,
@@ -517,6 +539,7 @@ func (w *World) jni_mems(events *ANDEventQueue, mem_info ANDFullPeerSessionInfo)
 			})
 		} else {
 			mem_entry.state = WS_JNI
+			mem_entry.sjnp = sjnp
 			events.Push(&EANDSessionRequest{
 				World:          w,
 				ANDPeerSession: mem_entry.ANDPeerSession(),
@@ -667,9 +690,10 @@ func (w *World) TimerExpire(events *ANDEventQueue) {
 
 	w.broadcastSJN()
 
+	duration := 500 + int(w.weibull_dist.Rand()*float64(200*(w.member_count+1)))
 	events.Push(&EANDTimerRequest{
 		World:    w,
-		Duration: time.Millisecond * time.Duration(300+rand.Intn(300*(w.member_count+1))),
+		Duration: time.Millisecond * time.Duration(duration),
 	})
 }
 
@@ -704,6 +728,11 @@ func (w *World) SJN(events *ANDEventQueue, peer_session ANDPeerSession, member_i
 			return e, true
 		case WS_MEM:
 			entry.sjnc++
+			config.IF_DEBUG(func() {
+				if entry.sjnc > 5 {
+					panic("too many SJN")
+				}
+			})
 			return e, false
 		default:
 			// not a member, but don't bother sending CRR
@@ -711,7 +740,9 @@ func (w *World) SJN(events *ANDEventQueue, peer_session ANDPeerSession, member_i
 		}
 	})
 
-	w.sendCRR(entry, missing_members)
+	if len(missing_members) != 0 {
+		w.sendCRR(entry, missing_members)
+	}
 }
 
 func (w *World) CRR(events *ANDEventQueue, peer_session ANDPeerSession, member_infos []ANDPeerSessionIdentity) {
