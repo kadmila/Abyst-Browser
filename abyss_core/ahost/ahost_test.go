@@ -368,3 +368,163 @@ func TestJoinWorldTransitive(t *testing.T) {
 		}
 	}
 }
+
+func TestJoinWorldTransitive5Peers(t *testing.T) {
+	// Construct five hosts
+	hosts := make([]*ahost.AbyssHost, 5)
+	for i := 0; i < 5; i++ {
+		root_key, err := sec.NewRootPrivateKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		host, err := ahost.NewAbyssHost(root_key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		hosts[i] = host
+	}
+
+	// Bind all hosts
+	for i := 0; i < 5; i++ {
+		if err := hosts[i].Bind(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Start serving
+	for i := 0; i < 5; i++ {
+		go hosts[i].Serve()
+		defer hosts[i].Close()
+	}
+
+	// Exchange peer information: each host knows the next one
+	for i := 0; i < 4; i++ {
+		if err := hosts[i].AppendKnownPeer(hosts[i+1].RootCertificate(), hosts[i+1].HandshakeKeyCertificate()); err != nil {
+			t.Fatal(err)
+		}
+		if err := hosts[i+1].AppendKnownPeer(hosts[i].RootCertificate(), hosts[i].HandshakeKeyCertificate()); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Synchronization channels for each host exposing the world
+	world_exposed := make([]chan struct{}, 5)
+	for i := 0; i < 5; i++ {
+		world_exposed[i] = make(chan struct{})
+	}
+
+	// Done channels for each host
+	done := make([]chan error, 5)
+	for i := 0; i < 5; i++ {
+		done[i] = make(chan error, 1)
+	}
+
+	// Host 0: Opens world and waits for all others to join
+	go func() {
+		defer func() { done[0] <- nil }()
+
+		world_0 := hosts[0].OpenWorld("abyss://example.com/chain5")
+		hosts[0].ExposeWorldForJoin(world_0, "/")
+		expectEvent[*and.EANDWorldEnter](t, hosts[0].GetEventCh())
+		close(world_exposed[0])
+
+		// Accept 4 peers (hosts 1, 2, 3, 4)
+		for i := 1; i <= 4; i++ {
+			expectEvent[*ahost.EPeerConnected](t, hosts[0].GetEventCh())
+			session_req := expectEvent[*and.EANDSessionRequest](t, hosts[0].GetEventCh())
+			hosts[0].AcceptWorldSession(world_0, session_req.Peer, session_req.SessionID)
+			expectEvent[*and.EANDSessionReady](t, hosts[0].GetEventCh())
+		}
+	}()
+
+	// Hosts 1-4: All follow the same pattern
+	for host_idx := 1; host_idx <= 4; host_idx++ {
+		idx := host_idx // Capture for closure
+		go func() {
+			defer func() { done[idx] <- nil }()
+
+			// Wait for previous host to expose world
+			<-world_exposed[idx-1]
+
+			// Wait 100ms before joining
+			time.Sleep(time.Millisecond * 100)
+
+			// Dial previous host (join target)
+			if err := hosts[idx].Dial(hosts[idx-1].ID()); err != nil {
+				t.Error(err)
+				return
+			}
+			peer := expectEvent[*ahost.EPeerConnected](t, hosts[idx].GetEventCh())
+
+			// Join world
+			hosts[idx].JoinWorld(peer.Peer, "/")
+			world_enter := expectEvent[*and.EANDWorldEnter](t, hosts[idx].GetEventCh())
+
+			// Expose world for next host to join (except host 4)
+			if idx < 4 {
+				hosts[idx].ExposeWorldForJoin(world_enter.World, "/")
+				close(world_exposed[idx])
+			}
+
+			// Now process events from existing members in any order
+			// We expect:
+			// - (idx-1) EANDSessionReady events (from all existing members 0 to idx-1)
+			// - (idx-2) EPeerConnected events (from non-join-target members 0 to idx-2)
+			// - (idx-2) EANDSessionRequest events (from non-join-target members)
+
+			session_ready_count := 0
+			peer_connected_count := 0
+			session_requests := make([]*and.EANDSessionRequest, 0)
+
+			// Loop until we have all expected events from existing members
+			for session_ready_count < idx {
+				select {
+				case event := <-hosts[idx].GetEventCh():
+					switch e := event.(type) {
+					case *and.EANDSessionReady:
+						session_ready_count++
+					case *ahost.EPeerConnected:
+						peer_connected_count++
+					case *and.EANDSessionRequest:
+						// Accept immediately
+						hosts[idx].AcceptWorldSession(world_enter.World, e.Peer, e.SessionID)
+						session_requests = append(session_requests, e)
+					}
+				case <-time.After(time.Second * 5):
+					t.Errorf("Host %d timeout: got %d/%d SessionReady, %d PeerConnected, %d SessionRequest",
+						idx, session_ready_count, idx, peer_connected_count, len(session_requests))
+					return
+				}
+			}
+
+			// Verify we got the right number of each event type
+			if peer_connected_count != idx-1 {
+				t.Errorf("Host %d: expected %d EPeerConnected, got %d", idx, idx-1, peer_connected_count)
+			}
+			if len(session_requests) != idx-1 {
+				t.Errorf("Host %d: expected %d EANDSessionRequest, got %d", idx, idx-1, len(session_requests))
+			}
+
+			// Now accept session requests from subsequent joiners (idx+1 to 4)
+			for i := idx + 1; i <= 4; i++ {
+				expectEvent[*ahost.EPeerConnected](t, hosts[idx].GetEventCh())
+				session_req := expectEvent[*and.EANDSessionRequest](t, hosts[idx].GetEventCh())
+				hosts[idx].AcceptWorldSession(world_enter.World, session_req.Peer, session_req.SessionID)
+				expectEvent[*and.EANDSessionReady](t, hosts[idx].GetEventCh())
+			}
+		}()
+	}
+
+	// Wait for all goroutines to complete
+	timeout := time.After(time.Second * 10)
+	for i := 0; i < 5; i++ {
+		select {
+		case err := <-done[i]:
+			if err != nil {
+				t.Fatalf("Host %d failed: %v", i, err)
+			}
+		case <-timeout:
+			t.Fatalf("Test timed out waiting for host %d", i)
+		}
+	}
+}
