@@ -60,15 +60,10 @@ func getEventType(event any) int {
 //export Event_WorldEnter_Query
 func Event_WorldEnter_Query(
 	h_event C.uintptr_t,
-	world_handle_out *C.uintptr_t,
 	world_session_id_buf *C.char,
 	url_buf_ptr *C.char, url_buf_len C.int,
 ) C.int {
 	event := cgo.Handle(h_event).Value().(and.EANDWorldEnter)
-
-	// Create world handle (only created here)
-	watchdog.CountHandleExport()
-	*world_handle_out = C.uintptr_t(cgo.NewHandle(event.World))
 
 	// Copy world session ID (16 bytes)
 	world_session_id := event.World.SessionID()
@@ -78,12 +73,6 @@ func Event_WorldEnter_Query(
 	// Copy URL to buffer
 	url_bytes := []byte(event.URL)
 	return TryMarshalBytes(url_buf_ptr, url_buf_len, url_bytes)
-}
-
-//export CloseWorld
-func CloseWorld(h_world C.uintptr_t) {
-	handle := cgo.Handle(h_world)
-	deleteHandle(handle)
 }
 
 //export Event_SessionRequest_Query

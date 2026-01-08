@@ -13,6 +13,7 @@ import (
 
 	"github.com/kadmila/Abyss-Browser/abyss_core/ahost"
 	"github.com/kadmila/Abyss-Browser/abyss_core/and"
+	"github.com/kadmila/Abyss-Browser/abyss_core/ani"
 	"github.com/kadmila/Abyss-Browser/abyss_core/sec"
 	"github.com/kadmila/Abyss-Browser/abyss_core/tools/functional"
 	"github.com/kadmila/Abyss-Browser/abyss_core/watchdog"
@@ -139,12 +140,64 @@ func CloseEvent(h C.uintptr_t) {
 	deleteHandle(handle)
 }
 
+//export Host_OpenWorld
+func Host_OpenWorld(
+	h C.uintptr_t,
+	world_url_ptr *C.char, world_url_len C.int,
+	world_handle_out *C.uintptr_t,
+) C.uintptr_t {
+	host := cgo.Handle(h).Value().(*ahost.AbyssHost)
+	world_url, ok := TryUnmarshalBytes(world_url_ptr, world_url_len)
+	if !ok {
+		return marshalError(errors.New("nil arguments"))
+	}
+
+	world := host.OpenWorld(string(world_url))
+
+	// Create world handle
+	watchdog.CountHandleExport()
+	*world_handle_out = C.uintptr_t(cgo.NewHandle(world))
+	return 0
+}
+
+//export Host_JoinWorld
+func Host_JoinWorld(
+	h C.uintptr_t,
+	h_peer C.uintptr_t,
+	path_ptr *C.char, path_len C.int,
+	world_handle_out *C.uintptr_t,
+) C.uintptr_t {
+	host := cgo.Handle(h).Value().(*ahost.AbyssHost)
+	peer := cgo.Handle(h_peer).Value().(ani.IAbyssPeer)
+	path, ok := TryUnmarshalBytes(path_ptr, path_len)
+	if !ok {
+		return marshalError(errors.New("nil arguments"))
+	}
+
+	world, err := host.JoinWorld(peer, string(path))
+	if err != nil {
+		return marshalError(err)
+	}
+
+	// Create world handle
+	watchdog.CountHandleExport()
+	*world_handle_out = C.uintptr_t(cgo.NewHandle(world))
+	return 0
+}
+
+//export CloseWorld
+func CloseWorld(h_world C.uintptr_t) {
+	handle := cgo.Handle(h_world)
+	deleteHandle(handle)
+}
+
+//export Host_ExposeWorldForJoin
 func Host_ExposeWorldForJoin(
 	h C.uintptr_t, h_world C.uintptr_t,
 	path_ptr *C.char, path_len C.int,
 ) C.uintptr_t {
 	host := cgo.Handle(h).Value().(*ahost.AbyssHost)
-	world := cgo.Handle(h).Value().(*and.World)
+	world := cgo.Handle(h_world).Value().(*and.World)
 	path, ok := TryUnmarshalBytes(path_ptr, path_len)
 	if !ok {
 		return marshalError(errors.New("nil arguments"))
