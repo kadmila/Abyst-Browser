@@ -34,23 +34,23 @@ const (
 // getEventType maps Go event types to C enum values
 func getEventType(event any) int {
 	switch event.(type) {
-	case and.EANDWorldEnter:
+	case *and.EANDWorldEnter:
 		return AbyssEvent_WorldEnter
-	case and.EANDSessionRequest:
+	case *and.EANDSessionRequest:
 		return AbyssEvent_SessionRequest
-	case and.EANDSessionReady:
+	case *and.EANDSessionReady:
 		return AbyssEvent_SessionReady
-	case and.EANDSessionClose:
+	case *and.EANDSessionClose:
 		return AbyssEvent_SessionClose
-	case and.EANDObjectAppend:
+	case *and.EANDObjectAppend:
 		return AbyssEvent_ObjectAppend
-	case and.EANDObjectDelete:
+	case *and.EANDObjectDelete:
 		return AbyssEvent_ObjectDelete
-	case and.EANDWorldLeave:
+	case *and.EANDWorldLeave:
 		return AbyssEvent_WorldLeave
-	case ahost.EPeerConnected:
+	case *ahost.EPeerConnected:
 		return AbyssEvent_PeerConnected
-	case ahost.EPeerDisconnected:
+	case *ahost.EPeerDisconnected:
 		return AbyssEvent_PeerDisconnected
 	default:
 		panic("unexpected Abyss event")
@@ -63,7 +63,7 @@ func Event_WorldEnter_Query(
 	world_session_id_buf *C.char,
 	url_buf_ptr *C.char, url_buf_len C.int,
 ) C.int {
-	event := cgo.Handle(h_event).Value().(and.EANDWorldEnter)
+	event := cgo.Handle(h_event).Value().(*and.EANDWorldEnter)
 
 	// Copy world session ID (16 bytes)
 	world_session_id := event.World.SessionID()
@@ -82,7 +82,7 @@ func Event_SessionRequest_Query(
 	peer_session_id_buf *C.char,
 	peer_id_buf_ptr *C.char, peer_id_buf_len C.int,
 ) C.int {
-	event := cgo.Handle(h_event).Value().(and.EANDSessionRequest)
+	event := cgo.Handle(h_event).Value().(*and.EANDSessionRequest)
 
 	// Copy world session ID (16 bytes)
 	world_session_id := event.World.SessionID()
@@ -106,7 +106,7 @@ func Event_SessionReady_Query(
 	peer_session_id_buf *C.char,
 	peer_id_buf_ptr *C.char, peer_id_buf_len C.int,
 ) C.int {
-	event := cgo.Handle(h_event).Value().(and.EANDSessionReady)
+	event := cgo.Handle(h_event).Value().(*and.EANDSessionReady)
 
 	// Copy world session ID (16 bytes)
 	world_session_id := event.World.SessionID()
@@ -130,7 +130,7 @@ func Event_SessionClose_Query(
 	peer_session_id_buf *C.char,
 	peer_id_buf_ptr *C.char, peer_id_buf_len C.int,
 ) C.int {
-	event := cgo.Handle(h_event).Value().(and.EANDSessionClose)
+	event := cgo.Handle(h_event).Value().(*and.EANDSessionClose)
 
 	// Copy world session ID (16 bytes)
 	world_session_id := event.World.SessionID()
@@ -155,7 +155,7 @@ func Event_ObjectAppend_Query(
 	peer_id_buf_ptr *C.char, peer_id_buf_len C.int,
 	object_count_out *C.int,
 ) C.int {
-	event := cgo.Handle(h_event).Value().(and.EANDObjectAppend)
+	event := cgo.Handle(h_event).Value().(*and.EANDObjectAppend)
 
 	// Copy world session ID (16 bytes)
 	world_session_id := event.World.SessionID()
@@ -182,7 +182,7 @@ func Event_ObjectAppend_GetObjects(
 	object_transform_bufs **C.float,
 	object_addr_bufs **C.char, object_addr_buf_len C.int,
 ) C.int {
-	event := cgo.Handle(h_event).Value().(and.EANDObjectAppend)
+	event := cgo.Handle(h_event).Value().(*and.EANDObjectAppend)
 
 	count := len(event.Objects)
 	id_buf_ptrs := (*[1 << 20]*C.char)(unsafe.Pointer(object_id_bufs))[:count]
@@ -217,7 +217,7 @@ func Event_ObjectDelete_Query(
 	peer_id_buf_ptr *C.char, peer_id_buf_len C.int,
 	object_count_out *C.int,
 ) C.int {
-	event := cgo.Handle(h_event).Value().(and.EANDObjectDelete)
+	event := cgo.Handle(h_event).Value().(*and.EANDObjectDelete)
 
 	// Copy world session ID (16 bytes)
 	world_session_id := event.World.SessionID()
@@ -242,7 +242,7 @@ func Event_ObjectDelete_GetObjectIDs(
 	h_event C.uintptr_t,
 	object_id_bufs **C.char,
 ) C.int {
-	event := cgo.Handle(h_event).Value().(and.EANDObjectDelete)
+	event := cgo.Handle(h_event).Value().(*and.EANDObjectDelete)
 
 	count := len(event.ObjectIDs)
 	id_buf_ptrs := (*[1 << 20]*C.char)(unsafe.Pointer(object_id_bufs))[:count]
@@ -263,7 +263,7 @@ func Event_WorldLeave_Query(
 	code_out *C.int,
 	message_buf_ptr *C.char, message_buf_len C.int,
 ) C.int {
-	event := cgo.Handle(h_event).Value().(and.EANDWorldLeave)
+	event := cgo.Handle(h_event).Value().(*and.EANDWorldLeave)
 
 	// Copy world session ID (16 bytes)
 	world_session_id := event.World.SessionID()
@@ -284,7 +284,7 @@ func Event_PeerConnected_Query(
 	peer_handle_out *C.uintptr_t,
 	peer_id_buf_ptr *C.char, peer_id_buf_len C.int,
 ) C.int {
-	event := cgo.Handle(h_event).Value().(ahost.EPeerConnected)
+	event := cgo.Handle(h_event).Value().(*ahost.EPeerConnected)
 
 	// Create peer handle (only created here)
 	watchdog.CountHandleExport()
@@ -306,7 +306,7 @@ func Event_PeerDisconnected_Query(
 	h_event C.uintptr_t,
 	peer_id_buf_ptr *C.char, peer_id_buf_len C.int,
 ) C.int {
-	event := cgo.Handle(h_event).Value().(ahost.EPeerDisconnected)
+	event := cgo.Handle(h_event).Value().(*ahost.EPeerDisconnected)
 
 	// Copy peer ID to buffer
 	peer_id_bytes := []byte(event.PeerID)
