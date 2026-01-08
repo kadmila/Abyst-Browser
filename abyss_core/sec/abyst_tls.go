@@ -119,4 +119,18 @@ func (t *TLSIdentity) NewAbystClientTlsConf(abyst_cert_checker ani.IAbystTlsCert
 	}
 }
 
+// NewCollocatedH3TlsConf provides *tls.Config for collocated HTTP/3 client
+func (t *TLSIdentity) NewCollocatedH3TlsConf() *tls.Config {
+	return &tls.Config{
+		Certificates: []tls.Certificate{
+			{
+				Certificate: [][]byte{t.tls_self_cert},
+				PrivateKey:  t.priv_key,
+			},
+		},
+		NextProtos:         []string{http3.NextProtoH3},
+		InsecureSkipVerify: true,
+	}
+}
+
 func (t *TLSIdentity) AbyssBindingCertificate() []byte { return t.abyss_bind_cert }

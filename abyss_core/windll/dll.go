@@ -253,16 +253,12 @@ func CloseAbyssClient(h C.uintptr_t) {
 }
 
 //export Host_NewCollocatedHttp3Client
-func Host_NewCollocatedHttp3Client(h C.uintptr_t, out *C.uintptr_t) C.uintptr_t {
+func Host_NewCollocatedHttp3Client(h C.uintptr_t) C.uintptr_t {
 	host := cgo.Handle(h).Value().(*ahost.AbyssHost)
-	client, err := host.NewCollocatedHttp3Client()
-	if err != nil {
-		return marshalError(err)
-	}
+	client := host.NewCollocatedHttp3Client()
 
 	watchdog.CountHandleExport()
-	*out = C.uintptr_t(cgo.NewHandle(client))
-	return 0
+	return C.uintptr_t(cgo.NewHandle(client))
 }
 
 //export CloseAbyssClientCollocatedHttp3Client

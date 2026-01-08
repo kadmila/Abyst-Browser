@@ -79,3 +79,42 @@ func TestAbystSimpleHttpRequest(t *testing.T) {
 	node_A.Close()
 	node_B.Close()
 }
+
+func TestCollocatedHttp3Client(t *testing.T) {
+	// Create an AbyssNode
+	root_key, _ := sec.NewRootPrivateKey()
+	node, _ := ann.NewAbyssNode(root_key)
+
+	// Start listening
+	node.Listen()
+
+	// Start service loop
+	go node.Serve()
+
+	// Create collocated HTTP/3 client
+	// This reuses the same quic.Transport (same IP:port) as the AbyssNode
+	client := node.NewCollocatedHttp3Client()
+
+	// Try to make a GET request to localhost:4433
+	// Note: This requires an external HTTP/3 server to be running on port 4433
+	// You can use the test server in testutil/http3server (change port to 4433)
+	resp, err := client.Get("https://localhost:4433/")
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Errorf("Failed to read response body: %v", err)
+		return
+	}
+
+	t.Logf("Response status: %s", resp.Status)
+	t.Logf("Response body: %s", string(body))
+
+	// Cleanup
+	node.Close()
+}

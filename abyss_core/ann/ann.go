@@ -365,8 +365,18 @@ func (n *AbyssNode) NewAbystClient() *abyst.AbystClient {
 	return abyst.NewAbystClient(n)
 }
 
-func (n *AbyssNode) NewCollocatedHttp3Client() (*http.Client, error) {
-	return nil, nil
+func (n *AbyssNode) NewCollocatedHttp3Client() *http.Client {
+	return &http.Client{
+		Transport: &http3.Transport{
+			Dial: func(ctx context.Context, addr string, _ *tls.Config, _ *quic.Config) (quic.EarlyConnection, error) {
+				udpAddr, err := net.ResolveUDPAddr("udp", addr)
+				if err != nil {
+					return nil, err
+				}
+				return n.transport.DialEarly(ctx, udpAddr, n.NewCollocatedH3TlsConf(), nil)
+			},
+		},
+	}
 }
 
 // Close gracefully closes AbyssNode.

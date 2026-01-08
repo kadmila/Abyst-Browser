@@ -143,7 +143,7 @@ func (h *AbyssHost) EraseKnownPeer(id string)               { h.net.EraseKnownPe
 func (h *AbyssHost) Dial(id string) error                   { return h.net.Dial(id) }
 func (h *AbyssHost) ConfigAbystGateway(config string) error { return h.net.ConfigAbystGateway(config) }
 func (h *AbyssHost) NewAbystClient() *abyst.AbystClient     { return h.net.NewAbystClient() }
-func (h *AbyssHost) NewCollocatedHttp3Client() (*http.Client, error) {
+func (h *AbyssHost) NewCollocatedHttp3Client() *http.Client {
 	return h.net.NewCollocatedHttp3Client()
 }
 
