@@ -11,7 +11,35 @@ import (
 	"net/http"
 	"runtime/cgo"
 	"strings"
+
+	"github.com/kadmila/Abyss-Browser/abyss_core/watchdog"
 )
+
+type HttpIOResult struct {
+	response *http.Response
+	err      error
+}
+
+//export CloseHttpIOResult
+func CloseHttpIOResult(h_result C.uintptr_t) {
+	handle := cgo.Handle(h_result)
+	deleteHandle(handle)
+}
+
+//export HttpIOResult_Unpack
+func HttpIOResult_Unpack(
+	h_result C.uintptr_t,
+	response_handle_out *C.uintptr_t,
+) C.uintptr_t {
+	result := cgo.Handle(h_result).Value().(*HttpIOResult)
+	if result.err == nil {
+		watchdog.CountHandleExport()
+		*response_handle_out = C.uintptr_t(cgo.NewHandle(result.response))
+		return 0
+	}
+
+	return marshalError(result.err)
+}
 
 //export HttpResponse_StatusCode
 func HttpResponse_StatusCode(h_response C.uintptr_t) C.int {
