@@ -176,3 +176,10 @@ func (r *AbyssPeerRegistry) GetPeerIdFromTlsCertificate(abyst_tls_cert *x509.Cer
 	id, ok := r.tls_certs[sec.HashTlsCertificate(abyst_tls_cert)]
 	return id, ok
 }
+
+func (r *AbyssPeerRegistry) GetPeer(id string) (*AbyssPeer, bool) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	peer, ok := r.connected[id]
+	return peer, ok
+}

@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -339,11 +340,25 @@ func (n *AbyssNode) ConfigAbystGateway(config string) error {
 
 func (n *AbyssNode) AbystDial(
 	ctx context.Context,
-	addr string,
+	dial_subject string,
 	_ *tls.Config, _ *quic.Config,
 ) (quic.EarlyConnection, error) {
-	// TODO
-	return nil, errors.ErrUnsupported
+	peer_id := strings.Split(dial_subject, ".")[0]
+	peer, ok := n.registry.GetPeer(peer_id)
+	if !ok {
+		return nil, errors.New("abyst: host unreachable")
+	}
+	netip_addr := peer.remote_addr
+	earlyconn, err := n.transport.DialEarly(
+		ctx,
+		&net.UDPAddr{
+			IP:   netip_addr.Addr().AsSlice(),
+			Port: int(netip_addr.Port()),
+		},
+		n.TLSIdentity.NewAbystClientTlsConf(n.registry),
+		newQuicConfig(),
+	)
+	return earlyconn, err
 }
 
 func (n *AbyssNode) NewAbystClient() *abyst.AbystClient {
