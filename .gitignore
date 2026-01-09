@@ -5,6 +5,7 @@
 /abyss_engine/obj
 /abyss_engine/bin
 Abyss-Browser.code-workspace
+abyss_engine/.vs/
 *.exe
 *.dll
 *.db

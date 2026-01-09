@@ -26,7 +26,6 @@ public static class AbyssLibB
     [DllImport(DllName)] private static extern void CloseEvent(IntPtr h);
     [DllImport(DllName)] private static extern unsafe IntPtr Host_OpenWorld(IntPtr h, byte* world_url_ptr, int world_url_len, IntPtr* world_handle_out);
     [DllImport(DllName)] private static extern unsafe IntPtr Host_JoinWorld(IntPtr h, IntPtr h_peer, byte* path_ptr, int path_len, IntPtr* world_handle_out);
-    [DllImport(DllName)] private static extern void CloseWorld(IntPtr h_world);
     [DllImport(DllName)] private static extern unsafe IntPtr Host_ExposeWorldForJoin(IntPtr h, IntPtr h_world, byte* path_ptr, int path_len);
     [DllImport(DllName)] private static extern void Host_HideWorld(IntPtr h, IntPtr h_world);
     [DllImport(DllName)] private static extern unsafe int Host_LocalAddrCandidates(IntPtr h, byte* buf_ptr, int buf_len);
@@ -128,12 +127,34 @@ public static class AbyssLibB
     public class Host : IDisposable
     {
         private IntPtr _handle;
+        public string ID { get; }
+        public string RootCertificate { get; }
 
         public bool IsValid => _handle != IntPtr.Zero;
 
         private Host(IntPtr handle)
         {
             _handle = handle;
+
+            unsafe
+            {
+                byte[] buf = new byte[70];
+                fixed (byte* bufPtr = buf)
+                {
+                    int len = Host_ID(_handle, bufPtr, buf.Length);
+                    ID = len > 0 ? Encoding.UTF8.GetString(buf, 0, len) : string.Empty;
+                }
+            }
+
+            unsafe
+            {
+                byte[] buf = new byte[4096];
+                fixed (byte* bufPtr = buf)
+                {
+                    int len = Host_RootCertificate(_handle, bufPtr, buf.Length);
+                    RootCertificate = len > 0 ? Encoding.UTF8.GetString(buf, 0, len) : string.Empty;
+                }
+            }
         }
 
         public static (Host?, Error?) Create(byte[] rootKey)
@@ -228,36 +249,7 @@ public static class AbyssLibB
             }
         }
 
-        public string GetID()
-        {
-            unsafe
-            {
-                byte[] buf = new byte[256];
-                fixed (byte* bufPtr = buf)
-                {
-                    int len = Host_ID(_handle, bufPtr, buf.Length);
-                    return len > 0 ? Encoding.UTF8.GetString(buf, 0, len) : string.Empty;
-                }
-            }
-        }
-
-        public byte[] GetRootCertificate()
-        {
-            unsafe
-            {
-                byte[] buf = new byte[4096];
-                fixed (byte* bufPtr = buf)
-                {
-                    int len = Host_RootCertificate(_handle, bufPtr, buf.Length);
-                    if (len <= 0) return [];
-                    byte[] result = new byte[len];
-                    Array.Copy(buf, result, len);
-                    return result;
-                }
-            }
-        }
-
-        public byte[] GetHandshakeKeyCertificate()
+        public string GetHandshakeKeyCertificate()
         {
             unsafe
             {
@@ -265,10 +257,7 @@ public static class AbyssLibB
                 fixed (byte* bufPtr = buf)
                 {
                     int len = Host_HandshakeKeyCertificate(_handle, bufPtr, buf.Length);
-                    if (len <= 0) return [];
-                    byte[] result = new byte[len];
-                    Array.Copy(buf, result, len);
-                    return result;
+                    return len > 0 ? Encoding.UTF8.GetString(buf, 0, len) : string.Empty;
                 }
             }
         }
@@ -381,7 +370,6 @@ public static class AbyssLibB
     public class Event : IDisposable
     {
         private IntPtr _handle;
-        private bool _disposed;
         public EventType Type { get; }
 
         internal Event(IntPtr handle, EventType type)
@@ -683,13 +671,9 @@ public static class AbyssLibB
 
         public void Dispose()
         {
-            if (_disposed) return;
-            if (_handle != IntPtr.Zero)
-            {
-                CloseEvent(_handle);
-                _handle = IntPtr.Zero;
-            }
-            _disposed = true;
+            if (_handle == IntPtr.Zero) return;
+            CloseEvent(_handle);
+            _handle = IntPtr.Zero;
             GC.SuppressFinalize(this);
         }
 
@@ -750,7 +734,6 @@ public static class AbyssLibB
     public class Peer : IDisposable
     {
         private IntPtr _handle;
-        private bool _disposed;
 
         internal Peer(IntPtr handle) => _handle = handle;
 
@@ -759,13 +742,9 @@ public static class AbyssLibB
 
         public void Dispose()
         {
-            if (_disposed) return;
-            if (_handle != IntPtr.Zero)
-            {
-                ClosePeer(_handle);
-                _handle = IntPtr.Zero;
-            }
-            _disposed = true;
+            if (_handle == IntPtr.Zero) return;
+            ClosePeer(_handle);
+            _handle = IntPtr.Zero;
             GC.SuppressFinalize(this);
         }
 
@@ -780,7 +759,6 @@ public static class AbyssLibB
     {
         private IntPtr _handle;
         private readonly Host _host;
-        private bool _disposed;
 
         internal World(IntPtr handle, Host host)
         {
@@ -814,18 +792,12 @@ public static class AbyssLibB
                 }
             }
         }
-
-        public void Close() => World_Close(_host.Handle, _handle);
-
+        
         public void Dispose()
         {
-            if (_disposed) return;
-            if (_handle != IntPtr.Zero)
-            {
-                CloseWorld(_handle);
-                _handle = IntPtr.Zero;
-            }
-            _disposed = true;
+            if (_handle == IntPtr.Zero) return;
+            World_Close(_host.Handle, _handle);
+            _handle = IntPtr.Zero;
             GC.SuppressFinalize(this);
         }
 
@@ -839,7 +811,6 @@ public static class AbyssLibB
     public class AbystClient : IDisposable
     {
         private IntPtr _handle;
-        private bool _disposed;
 
         internal AbystClient(IntPtr handle) => _handle = handle;
 
@@ -904,13 +875,9 @@ public static class AbyssLibB
 
         public void Dispose()
         {
-            if (_disposed) return;
-            if (_handle != IntPtr.Zero)
-            {
-                CloseAbyssClient(_handle);
-                _handle = IntPtr.Zero;
-            }
-            _disposed = true;
+            if (_handle == IntPtr.Zero) return;
+            CloseAbyssClient(_handle);
+            _handle = IntPtr.Zero;
             GC.SuppressFinalize(this);
         }
 
@@ -924,7 +891,6 @@ public static class AbyssLibB
     public class Http3Client : IDisposable
     {
         private IntPtr _handle;
-        private bool _disposed;
 
         internal Http3Client(IntPtr handle) => _handle = handle;
 
@@ -983,13 +949,9 @@ public static class AbyssLibB
 
         public void Dispose()
         {
-            if (_disposed) return;
-            if (_handle != IntPtr.Zero)
-            {
-                CloseAbyssClientCollocatedHttp3Client(_handle);
-                _handle = IntPtr.Zero;
-            }
-            _disposed = true;
+            if (_handle == IntPtr.Zero) return;
+            CloseAbyssClientCollocatedHttp3Client(_handle);
+            _handle = IntPtr.Zero;
             GC.SuppressFinalize(this);
         }
 
@@ -1003,7 +965,6 @@ public static class AbyssLibB
     public class HttpIOResult : IDisposable
     {
         private IntPtr _handle;
-        private bool _disposed;
 
         internal HttpIOResult(IntPtr handle) => _handle = handle;
 
@@ -1023,13 +984,9 @@ public static class AbyssLibB
 
         public void Dispose()
         {
-            if (_disposed) return;
-            if (_handle != IntPtr.Zero)
-            {
-                CloseHttpIOResult(_handle);
-                _handle = IntPtr.Zero;
-            }
-            _disposed = true;
+            if (_handle == IntPtr.Zero) return;
+            CloseHttpIOResult(_handle);
+            _handle = IntPtr.Zero;
             GC.SuppressFinalize(this);
         }
 
@@ -1039,7 +996,6 @@ public static class AbyssLibB
     public class HttpResponse : IDisposable
     {
         private IntPtr _handle;
-        private bool _disposed;
 
         internal HttpResponse(IntPtr handle) => _handle = handle;
 
@@ -1103,13 +1059,9 @@ public static class AbyssLibB
 
         public void Dispose()
         {
-            if (_disposed) return;
-            if (_handle != IntPtr.Zero)
-            {
-                CloseHttpResponse(_handle);
-                _handle = IntPtr.Zero;
-            }
-            _disposed = true;
+            if (_handle == IntPtr.Zero) return;
+            CloseHttpResponse(_handle);
+            _handle = IntPtr.Zero;
             GC.SuppressFinalize(this);
         }
 

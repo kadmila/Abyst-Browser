@@ -64,7 +64,9 @@ func World_Close(
 	h_world C.uintptr_t,
 ) {
 	host := cgo.Handle(h_host).Value().(*ahost.AbyssHost)
-	world := cgo.Handle(h_world).Value().(*and.World)
+	handle := cgo.Handle(h_world)
+	deleteHandle(handle)
+	world := handle.Value().(*and.World)
 
 	host.CloseWorld(world)
 }
