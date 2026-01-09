@@ -4,6 +4,16 @@ package main
 #cgo CFLAGS: -std=c99
 #include <stdint.h>
 #include <windows.h>
+
+#ifndef _WAITER_CALLBACK_T
+
+typedef void (*waiter_callback_t)(uintptr_t);
+static inline void call_waiter_callback(waiter_callback_t cb, uintptr_t value) {
+	cb(value);
+}
+
+#define _WAITER_CALLBACK_T
+#endif
 */
 import "C"
 
@@ -19,25 +29,29 @@ import (
 //export Http3Client_Get
 func Http3Client_Get(
 	h_client C.uintptr_t,
-	h_event C.HANDLE,
 	url_ptr *C.char, url_len C.int,
 	result_handle_out *C.uintptr_t,
+	waiter_callback C.waiter_callback_t,
+	waiter_callback_arg C.uintptr_t,
 ) C.uintptr_t {
-	client := cgo.Handle(h_client).Value().(*http.Client)
-	url, ok := TryUnmarshalBytes(url_ptr, url_len)
+	client, ok := cgo.Handle(h_client).Value().(*http.Client)
+	url_bytes, ok := TryUnmarshalBytes(url_ptr, url_len)
 	if !ok {
+		C.call_waiter_callback(waiter_callback, waiter_callback_arg)
 		return marshalError(errors.New("nil arguments"))
 	}
+	url := string(url_bytes)
 
 	result := &HttpIOResult{}
 	watchdog.CountHandleExport()
 	*result_handle_out = C.uintptr_t(cgo.NewHandle(result))
 
 	go func() {
-		resp, err := client.Get(string(url))
+		resp, err := client.Get(url)
 		result.response = resp
 		result.err = err
-		C.SetEvent(h_event)
+
+		C.call_waiter_callback(waiter_callback, waiter_callback_arg)
 	}()
 
 	return 0

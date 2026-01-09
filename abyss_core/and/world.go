@@ -615,18 +615,19 @@ func (w *World) MEM(events *ANDEventQueue, peer_session ANDPeerSession, timestam
 	}
 }
 
-func (w *World) AcceptSession(events *ANDEventQueue, peer_session ANDPeerSession) {
+func (w *World) AcceptSession(events *ANDEventQueue, peer_session_identity ANDPeerSessionIdentity) {
 	if w.is_closed {
 		return
 	}
 
-	entry, ok := w.entries[peer_session.Peer.ID()]
+	entry, ok := w.entries[peer_session_identity.PeerID]
 	if !ok {
 		// entry deleted
 		return
 	}
+	peer_session := entry.ANDPeerSession()
 
-	if entry.SessionID != peer_session.SessionID {
+	if entry.SessionID != peer_session_identity.SessionID {
 		// session expired
 		return
 	}
@@ -657,18 +658,18 @@ func (w *World) AcceptSession(events *ANDEventQueue, peer_session ANDPeerSession
 	}
 }
 
-func (w *World) DeclineSession(events *ANDEventQueue, peer_session ANDPeerSession, code int, message string) {
+func (w *World) DeclineSession(events *ANDEventQueue, peer_session_identity ANDPeerSessionIdentity, code int, message string) {
 	if w.is_closed {
 		return
 	}
 
-	entry, ok := w.entries[peer_session.Peer.ID()]
+	entry, ok := w.entries[peer_session_identity.PeerID]
 	if !ok {
 		// entry deleted
 		return
 	}
 
-	if entry.SessionID != peer_session.SessionID {
+	if entry.SessionID != peer_session_identity.SessionID {
 		// session expired
 		return
 	}

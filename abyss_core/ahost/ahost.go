@@ -178,32 +178,32 @@ func (h *AbyssHost) JoinWorld(peer ani.IAbyssPeer, path string) (*and.World, err
 
 // AcceptWorldSession accepts a peer session request for a world.
 // This creates an event queue, calls World.AcceptSession, and processes resulting events.
-func (h *AbyssHost) AcceptWorldSession(world *and.World, peer ani.IAbyssPeer, peerSessionID uuid.UUID) {
+func (h *AbyssHost) AcceptWorldSession(world *and.World, peer_id string, peerSessionID uuid.UUID) {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
 	events := and.NewANDEventQueue()
-	peer_session := and.ANDPeerSession{
-		Peer:      peer,
+	peer_session_identity := and.ANDPeerSessionIdentity{
+		PeerID:    peer_id,
 		SessionID: peerSessionID,
 	}
-	world.AcceptSession(events, peer_session)
+	world.AcceptSession(events, peer_session_identity)
 	world.CheckSanity()
 	h.handleANDEvent(events)
 }
 
 // DeclineWorldSession declines a peer session request for a world.
 // This creates an event queue, calls World.DeclineSession, and processes resulting events.
-func (h *AbyssHost) DeclineWorldSession(world *and.World, peer ani.IAbyssPeer, peerSessionID uuid.UUID, code int, message string) {
+func (h *AbyssHost) DeclineWorldSession(world *and.World, peer_id string, peerSessionID uuid.UUID, code int, message string) {
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 
 	events := and.NewANDEventQueue()
-	peer_session := and.ANDPeerSession{
-		Peer:      peer,
+	peer_session_identity := and.ANDPeerSessionIdentity{
+		PeerID:    peer_id,
 		SessionID: peerSessionID,
 	}
-	world.DeclineSession(events, peer_session, code, message)
+	world.DeclineSession(events, peer_session_identity, code, message)
 	world.CheckSanity()
 	h.handleANDEvent(events)
 }

@@ -1,6 +1,12 @@
+using AbyssCLI.AML.Event;
+using System;
+using System.Diagnostics.Contracts;
+using System.IO;
+using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using static AbyssCLI.AbyssLibB;
 
 #nullable enable
 namespace AbyssCLI;
@@ -12,6 +18,10 @@ public static class AbyssLibB
 {
     private const string DllName = "abyssnet.dll";
 
+    public const int UrlMaxLength = 4096;
+    public const int PeerIdMaxLength = 100;
+    public const int GeneralTextMaxLength = 1024;
+
     #region P/Invoke Declarations
 
     [DllImport(DllName)] private static extern int Init();
@@ -21,7 +31,8 @@ public static class AbyssLibB
 
     [DllImport(DllName)] private static extern unsafe IntPtr NewHost(byte* root_key_ptr, int root_key_len, IntPtr* host_out);
     [DllImport(DllName)] private static extern void CloseHost(IntPtr h);
-    [DllImport(DllName)] private static extern void Host_Run(IntPtr h);
+    [DllImport(DllName)] private static extern IntPtr Host_Bind(IntPtr h);
+    [DllImport(DllName)] private static extern void Host_Serve(IntPtr h);
     [DllImport(DllName)] private static extern unsafe IntPtr Host_WaitForEvent(IntPtr h, int* event_type_out, IntPtr* event_handle_out);
     [DllImport(DllName)] private static extern void CloseEvent(IntPtr h);
     [DllImport(DllName)] private static extern unsafe IntPtr Host_OpenWorld(IntPtr h, byte* world_url_ptr, int world_url_len, IntPtr* world_handle_out);
@@ -43,11 +54,11 @@ public static class AbyssLibB
 
     [DllImport(DllName)] private static extern void ClosePeer(IntPtr h_peer);
 
-    [DllImport(DllName)] private static extern unsafe IntPtr AbystClient_Get(IntPtr h_client, IntPtr h_event, byte* peer_id_ptr, int peer_id_len, byte* path_ptr, int path_len, IntPtr* result_handle_out);
+    [DllImport(DllName)] private static extern unsafe IntPtr AbystClient_Get(IntPtr h_client, byte* peer_id_ptr, int peer_id_len, byte* path_ptr, int path_len, IntPtr* result_handle_out, CompleteTaskCompletionSourceCallback waiter_callback, IntPtr waiter_callback_arg);
     [DllImport(DllName)] private static extern unsafe IntPtr AbystClient_Post(IntPtr h_client, IntPtr h_event, byte* peer_id_ptr, int peer_id_len, byte* path_ptr, int path_len, byte* content_type_ptr, int content_type_len, byte* body_ptr, int body_len, IntPtr* result_handle_out);
     [DllImport(DllName)] private static extern unsafe IntPtr AbystClient_Head(IntPtr h_client, IntPtr h_event, byte* peer_id_ptr, int peer_id_len, byte* path_ptr, int path_len, IntPtr* result_handle_out);
 
-    [DllImport(DllName)] private static extern unsafe IntPtr Http3Client_Get(IntPtr h_client, IntPtr h_event, byte* url_ptr, int url_len, IntPtr* result_handle_out);
+    [DllImport(DllName)] private static extern unsafe IntPtr Http3Client_Get(IntPtr h_client, byte* url_ptr, int url_len, IntPtr* result_handle_out, CompleteTaskCompletionSourceCallback waiter_callback, IntPtr waiter_callback_arg);
     [DllImport(DllName)] private static extern unsafe IntPtr Http3Client_Post(IntPtr h_client, IntPtr h_event, byte* url_ptr, int url_len, byte* content_type_ptr, int content_type_len, byte* body_ptr, int body_len, IntPtr* result_handle_out);
     [DllImport(DllName)] private static extern unsafe IntPtr Http3Client_Head(IntPtr h_client, IntPtr h_event, byte* url_ptr, int url_len, IntPtr* result_handle_out);
 
@@ -59,20 +70,20 @@ public static class AbyssLibB
     [DllImport(DllName)] private static extern unsafe int HttpResponse_ReadBody(IntPtr h_response, byte* buf_ptr, int buf_len);
     [DllImport(DllName)] private static extern void CloseHttpResponse(IntPtr h_response);
 
-    [DllImport(DllName)] private static extern unsafe void World_AcceptSession(IntPtr h_host, IntPtr h_world, IntPtr h_peer, byte* peer_session_id_buf);
-    [DllImport(DllName)] private static extern unsafe void World_DeclineSession(IntPtr h_host, IntPtr h_world, IntPtr h_peer, byte* peer_session_id_buf, int code, byte* message_buf_ptr, int message_buf_len);
+    [DllImport(DllName)] private static extern unsafe void World_AcceptSession(IntPtr h_host, IntPtr h_world, byte* peer_id_buf_ptr, int peer_id_buf_len, byte* peer_session_id_buf);
+    [DllImport(DllName)] private static extern unsafe void World_DeclineSession(IntPtr h_host, IntPtr h_world, byte* peer_id_buf_ptr, int peer_id_buf_len, byte* peer_session_id_buf, int code, byte* message_buf_ptr, int message_buf_len);
     [DllImport(DllName)] private static extern void World_Close(IntPtr h_host, IntPtr h_world);
     [DllImport(DllName)] private static extern unsafe void World_ObjectAppend(IntPtr h_host, IntPtr h_world, int peer_count, IntPtr* h_peers, byte** peer_session_id_bufs, int object_count, byte** object_id_bufs, float** object_transform_bufs, byte** object_addr_bufs, int object_addr_buf_len);
     [DllImport(DllName)] private static extern unsafe void World_ObjectDelete(IntPtr h_host, IntPtr h_world, int peer_count, IntPtr* h_peers, byte** peer_session_id_bufs, int object_count, byte** object_id_bufs);
 
     // Event query functions
     [DllImport(DllName)] private static extern unsafe int Event_WorldEnter_Query(IntPtr h_event, byte* world_session_id_buf, byte* url_buf_ptr, int url_buf_len);
-    [DllImport(DllName)] private static extern unsafe int Event_SessionRequest_Query(IntPtr h_event, byte* world_session_id_buf, byte* peer_session_id_buf, byte* peer_id_buf_ptr, int peer_id_buf_len);
-    [DllImport(DllName)] private static extern unsafe int Event_SessionReady_Query(IntPtr h_event, byte* world_session_id_buf, byte* peer_session_id_buf, byte* peer_id_buf_ptr, int peer_id_buf_len);
-    [DllImport(DllName)] private static extern unsafe int Event_SessionClose_Query(IntPtr h_event, byte* world_session_id_buf, byte* peer_session_id_buf, byte* peer_id_buf_ptr, int peer_id_buf_len);
-    [DllImport(DllName)] private static extern unsafe int Event_ObjectAppend_Query(IntPtr h_event, byte* world_session_id_buf, byte* peer_session_id_buf, byte* peer_id_buf_ptr, int peer_id_buf_len, int* object_count_out);
+    [DllImport(DllName)] private static extern unsafe int Event_SessionRequest_Query(IntPtr h_event, byte* world_session_id_buf, byte* peer_id_buf_ptr, int peer_id_buf_len, byte* peer_session_id_buf);
+    [DllImport(DllName)] private static extern unsafe int Event_SessionReady_Query(IntPtr h_event, byte* world_session_id_buf, byte* peer_id_buf_ptr, int peer_id_buf_len, byte* peer_session_id_buf);
+    [DllImport(DllName)] private static extern unsafe int Event_SessionClose_Query(IntPtr h_event, byte* world_session_id_buf, byte* peer_id_buf_ptr, int peer_id_buf_len, byte* peer_session_id_buf);
+    [DllImport(DllName)] private static extern unsafe int Event_ObjectAppend_Query(IntPtr h_event, byte* world_session_id_buf, byte* peer_id_buf_ptr, int peer_id_buf_len, byte* peer_session_id_buf, int* object_count_out);
     [DllImport(DllName)] private static extern unsafe int Event_ObjectAppend_GetObjects(IntPtr h_event, byte** object_id_bufs, float** object_transform_bufs, byte** object_addr_bufs, int object_addr_buf_len);
-    [DllImport(DllName)] private static extern unsafe int Event_ObjectDelete_Query(IntPtr h_event, byte* world_session_id_buf, byte* peer_session_id_buf, byte* peer_id_buf_ptr, int peer_id_buf_len, int* object_count_out);
+    [DllImport(DllName)] private static extern unsafe int Event_ObjectDelete_Query(IntPtr h_event, byte* world_session_id_buf, byte* peer_id_buf_ptr, int peer_id_buf_len, byte* peer_session_id_buf, int* object_count_out);
     [DllImport(DllName)] private static extern unsafe int Event_ObjectDelete_GetObjectIDs(IntPtr h_event, byte** object_id_bufs);
     [DllImport(DllName)] private static extern unsafe int Event_WorldLeave_Query(IntPtr h_event, byte* world_session_id_buf, int* code_out, byte* message_buf_ptr, int message_buf_len);
     [DllImport(DllName)] private static extern unsafe int Event_PeerConnected_Query(IntPtr h_event, IntPtr* peer_handle_out, byte* peer_id_buf_ptr, int peer_id_buf_len);
@@ -86,7 +97,7 @@ public static class AbyssLibB
 
     #endregion
 
-    #region Error Handling
+    #region Error
 
     public class Error
     {
@@ -107,15 +118,13 @@ public static class AbyssLibB
                 fixed (byte* bufPtr = buf)
                 {
                     int len = GetErrorBody(handle, bufPtr, buf.Length);
-                    CloseError(handle);
-
                     if (len != buf.Length)
                     {
-                        Message = "Error: fatal DLL corruption: failed to get error body";
-                        return;
+                        throw new InternalBufferOverflowException("fatal DLL corruption: failed to get error body");
                     }
                     Message = Encoding.UTF8.GetString(buf);
                 }
+                CloseError(handle);
             }
         }
     }
@@ -138,7 +147,7 @@ public static class AbyssLibB
 
             unsafe
             {
-                byte[] buf = new byte[70];
+                byte[] buf = new byte[PeerIdMaxLength];
                 fixed (byte* bufPtr = buf)
                 {
                     int len = Host_ID(_handle, bufPtr, buf.Length);
@@ -172,9 +181,17 @@ public static class AbyssLibB
             }
         }
 
-        public void Run() => Host_Run(_handle);
+        public Error? Bind()
+        {
+            IntPtr errHandle = Host_Bind(_handle);
+            if (errHandle != IntPtr.Zero)
+                return new Error(errHandle);
+            return null;
+        }
 
-        public (EventType Type, Event? Event, Error?) WaitForEvent()
+        public void Serve() => Host_Serve(_handle);
+
+        public (EventType Type, dynamic? Event, Error?) WaitForEvent()
         {
             unsafe
             {
@@ -183,7 +200,21 @@ public static class AbyssLibB
                 IntPtr errHandle = Host_WaitForEvent(_handle, &eventType, &eventHandle);
                 if (errHandle != IntPtr.Zero)
                     return (EventType.None, null, new Error(errHandle));
-                return ((EventType)eventType, new Event(eventHandle, (EventType)eventType), null);
+
+                dynamic? ev = (EventType)eventType switch
+                {
+                    EventType.WorldEnter => new EWorldEnter(eventHandle),
+                    EventType.SessionRequest => new ESessionRequest(eventHandle),
+                    EventType.SessionReady => new ESessionReady(eventHandle),
+                    EventType.SessionClose => new ESessionClose(eventHandle),
+                    EventType.ObjectAppend => new EObjectAppend(eventHandle),
+                    EventType.ObjectDelete => new EObjectDelete(eventHandle),
+                    EventType.WorldLeave => new EWorldLeave(eventHandle),
+                    EventType.PeerConnected => new EPeerConnected(eventHandle),
+                    EventType.PeerDisconnected => new EPeerDisconnected(eventHandle),
+                    _ => null
+                };
+                return ((EventType)eventType, ev, null);
             }
         }
 
@@ -367,365 +398,330 @@ public static class AbyssLibB
         PeerDisconnected = 9,
     }
 
-    public class Event : IDisposable
+    public class EWorldEnter
     {
-        private IntPtr _handle;
-        public EventType Type { get; }
+        public Guid WSID { get; }
+        public string URL { get; }
 
-        internal Event(IntPtr handle, EventType type)
-        {
-            _handle = handle;
-            Type = type;
-        }
-
-        public WorldEnterEventData? QueryWorldEnter()
-        {
-            if (Type != EventType.WorldEnter) return null;
+        public EWorldEnter(IntPtr handle) {
             unsafe
             {
                 byte[] worldSessionId = new byte[16];
-                byte[] urlBuf = new byte[2048];
+                byte[] urlBuf = new byte[UrlMaxLength];
                 fixed (byte* wsidPtr = worldSessionId)
                 fixed (byte* urlPtr = urlBuf)
                 {
-                    int urlLen = Event_WorldEnter_Query(_handle, wsidPtr, urlPtr, urlBuf.Length);
-                    if (urlLen < 0) return null;
-                    return new WorldEnterEventData
-                    {
-                        WorldSessionId = worldSessionId,
-                        Url = Encoding.UTF8.GetString(urlBuf, 0, urlLen)
-                    };
+                    int urlLen = Event_WorldEnter_Query(handle, wsidPtr, urlPtr, urlBuf.Length);
+                    if (urlLen < 0)
+                        throw new InternalBufferOverflowException("Event_WorldEnter_Query");
+                    WSID = new Guid(worldSessionId);
+                    URL = Encoding.UTF8.GetString(urlBuf, 0, urlLen);
                 }
             }
+            CloseEvent(handle);
         }
-
-        public SessionEventData? QuerySessionRequest()
-        {
-            if (Type != EventType.SessionRequest) return null;
-            unsafe
-            {
-                byte[] worldSessionId = new byte[16];
-                byte[] peerSessionId = new byte[16];
-                byte[] peerIdBuf = new byte[256];
-                fixed (byte* wsidPtr = worldSessionId)
-                fixed (byte* psidPtr = peerSessionId)
-                fixed (byte* pidPtr = peerIdBuf)
-                {
-                    int peerIdLen = Event_SessionRequest_Query(_handle, wsidPtr, psidPtr, pidPtr, peerIdBuf.Length);
-                    if (peerIdLen < 0) return null;
-                    return new SessionEventData
-                    {
-                        WorldSessionId = worldSessionId,
-                        PeerSessionId = peerSessionId,
-                        PeerId = Encoding.UTF8.GetString(peerIdBuf, 0, peerIdLen)
-                    };
-                }
-            }
-        }
-
-        public SessionEventData? QuerySessionReady()
-        {
-            if (Type != EventType.SessionReady) return null;
-            unsafe
-            {
-                byte[] worldSessionId = new byte[16];
-                byte[] peerSessionId = new byte[16];
-                byte[] peerIdBuf = new byte[256];
-                fixed (byte* wsidPtr = worldSessionId)
-                fixed (byte* psidPtr = peerSessionId)
-                fixed (byte* pidPtr = peerIdBuf)
-                {
-                    int peerIdLen = Event_SessionReady_Query(_handle, wsidPtr, psidPtr, pidPtr, peerIdBuf.Length);
-                    if (peerIdLen < 0) return null;
-                    return new SessionEventData
-                    {
-                        WorldSessionId = worldSessionId,
-                        PeerSessionId = peerSessionId,
-                        PeerId = Encoding.UTF8.GetString(peerIdBuf, 0, peerIdLen)
-                    };
-                }
-            }
-        }
-
-        public SessionEventData? QuerySessionClose()
-        {
-            if (Type != EventType.SessionClose) return null;
-            unsafe
-            {
-                byte[] worldSessionId = new byte[16];
-                byte[] peerSessionId = new byte[16];
-                byte[] peerIdBuf = new byte[256];
-                fixed (byte* wsidPtr = worldSessionId)
-                fixed (byte* psidPtr = peerSessionId)
-                fixed (byte* pidPtr = peerIdBuf)
-                {
-                    int peerIdLen = Event_SessionClose_Query(_handle, wsidPtr, psidPtr, pidPtr, peerIdBuf.Length);
-                    if (peerIdLen < 0) return null;
-                    return new SessionEventData
-                    {
-                        WorldSessionId = worldSessionId,
-                        PeerSessionId = peerSessionId,
-                        PeerId = Encoding.UTF8.GetString(peerIdBuf, 0, peerIdLen)
-                    };
-                }
-            }
-        }
-
-        public ObjectAppendEventData? QueryObjectAppend()
-        {
-            if (Type != EventType.ObjectAppend) return null;
-            unsafe
-            {
-                byte[] worldSessionId = new byte[16];
-                byte[] peerSessionId = new byte[16];
-                byte[] peerIdBuf = new byte[256];
-                int objectCount;
-                fixed (byte* wsidPtr = worldSessionId)
-                fixed (byte* psidPtr = peerSessionId)
-                fixed (byte* pidPtr = peerIdBuf)
-                {
-                    int peerIdLen = Event_ObjectAppend_Query(_handle, wsidPtr, psidPtr, pidPtr, peerIdBuf.Length, &objectCount);
-                    if (peerIdLen < 0) return null;
-
-                    var data = new ObjectAppendEventData
-                    {
-                        WorldSessionId = worldSessionId,
-                        PeerSessionId = peerSessionId,
-                        PeerId = Encoding.UTF8.GetString(peerIdBuf, 0, peerIdLen),
-                        Objects = new ObjectInfo[objectCount]
-                    };
-
-                    if (objectCount > 0)
-                    {
-                        // Allocate buffers for object data
-                        const int ObjectIdSize = 16;
-                        const int TransformSize = 16; // 16 floats
-                        const int AddrBufLen = 256;
-
-                        byte[][] objectIdBuffers = new byte[objectCount][];
-                        float[][] transformBuffers = new float[objectCount][];
-                        byte[][] addrBuffers = new byte[objectCount][];
-
-                        for (int i = 0; i < objectCount; i++)
-                        {
-                            objectIdBuffers[i] = new byte[ObjectIdSize];
-                            transformBuffers[i] = new float[TransformSize];
-                            addrBuffers[i] = new byte[AddrBufLen];
-                        }
-
-                        fixed (byte* id0 = objectIdBuffers[0])
-                        fixed (float* tr0 = transformBuffers[0])
-                        fixed (byte* addr0 = addrBuffers[0])
-                        {
-                            byte*[] idPtrs = new byte*[objectCount];
-                            float*[] trPtrs = new float*[objectCount];
-                            byte*[] addrPtrs = new byte*[objectCount];
-
-                            for (int i = 0; i < objectCount; i++)
-                            {
-                                fixed (byte* idp = objectIdBuffers[i])
-                                fixed (float* trp = transformBuffers[i])
-                                fixed (byte* addrp = addrBuffers[i])
-                                {
-                                    idPtrs[i] = idp;
-                                    trPtrs[i] = trp;
-                                    addrPtrs[i] = addrp;
-                                }
-                            }
-
-                            fixed (byte** idPtrsPtr = idPtrs)
-                            fixed (float** trPtrsPtr = trPtrs)
-                            fixed (byte** addrPtrsPtr = addrPtrs)
-                            {
-                                Event_ObjectAppend_GetObjects(_handle, idPtrsPtr, trPtrsPtr, addrPtrsPtr, AddrBufLen);
-                            }
-                        }
-
-                        for (int i = 0; i < objectCount; i++)
-                        {
-                            data.Objects[i] = new ObjectInfo
-                            {
-                                Id = objectIdBuffers[i],
-                                Transform = transformBuffers[i],
-                                Address = Encoding.UTF8.GetString(addrBuffers[i]).TrimEnd('\0')
-                            };
-                        }
-                    }
-
-                    return data;
-                }
-            }
-        }
-
-        public ObjectDeleteEventData? QueryObjectDelete()
-        {
-            if (Type != EventType.ObjectDelete) return null;
-            unsafe
-            {
-                byte[] worldSessionId = new byte[16];
-                byte[] peerSessionId = new byte[16];
-                byte[] peerIdBuf = new byte[256];
-                int objectCount;
-                fixed (byte* wsidPtr = worldSessionId)
-                fixed (byte* psidPtr = peerSessionId)
-                fixed (byte* pidPtr = peerIdBuf)
-                {
-                    int peerIdLen = Event_ObjectDelete_Query(_handle, wsidPtr, psidPtr, pidPtr, peerIdBuf.Length, &objectCount);
-                    if (peerIdLen < 0) return null;
-
-                    var data = new ObjectDeleteEventData
-                    {
-                        WorldSessionId = worldSessionId,
-                        PeerSessionId = peerSessionId,
-                        PeerId = Encoding.UTF8.GetString(peerIdBuf, 0, peerIdLen),
-                        ObjectIds = new byte[objectCount][]
-                    };
-
-                    if (objectCount > 0)
-                    {
-                        const int ObjectIdSize = 16;
-                        byte[][] objectIdBuffers = new byte[objectCount][];
-                        for (int i = 0; i < objectCount; i++)
-                            objectIdBuffers[i] = new byte[ObjectIdSize];
-
-                        fixed (byte* id0 = objectIdBuffers[0])
-                        {
-                            byte*[] idPtrs = new byte*[objectCount];
-                            for (int i = 0; i < objectCount; i++)
-                            {
-                                fixed (byte* idp = objectIdBuffers[i])
-                                    idPtrs[i] = idp;
-                            }
-
-                            fixed (byte** idPtrsPtr = idPtrs)
-                            {
-                                Event_ObjectDelete_GetObjectIDs(_handle, idPtrsPtr);
-                            }
-                        }
-
-                        data.ObjectIds = objectIdBuffers;
-                    }
-
-                    return data;
-                }
-            }
-        }
-
-        public WorldLeaveEventData? QueryWorldLeave()
-        {
-            if (Type != EventType.WorldLeave) return null;
-            unsafe
-            {
-                byte[] worldSessionId = new byte[16];
-                byte[] messageBuf = new byte[1024];
-                int code;
-                fixed (byte* wsidPtr = worldSessionId)
-                fixed (byte* msgPtr = messageBuf)
-                {
-                    int msgLen = Event_WorldLeave_Query(_handle, wsidPtr, &code, msgPtr, messageBuf.Length);
-                    if (msgLen < 0) return null;
-                    return new WorldLeaveEventData
-                    {
-                        WorldSessionId = worldSessionId,
-                        Code = code,
-                        Message = Encoding.UTF8.GetString(messageBuf, 0, msgLen)
-                    };
-                }
-            }
-        }
-
-        public PeerConnectedEventData? QueryPeerConnected()
-        {
-            if (Type != EventType.PeerConnected) return null;
-            unsafe
-            {
-                byte[] peerIdBuf = new byte[256];
-                IntPtr peerHandle;
-                fixed (byte* pidPtr = peerIdBuf)
-                {
-                    int peerIdLen = Event_PeerConnected_Query(_handle, &peerHandle, pidPtr, peerIdBuf.Length);
-                    if (peerIdLen < 0) return null;
-                    return new PeerConnectedEventData
-                    {
-                        Peer = new Peer(peerHandle),
-                        PeerId = Encoding.UTF8.GetString(peerIdBuf, 0, peerIdLen)
-                    };
-                }
-            }
-        }
-
-        public string? QueryPeerDisconnected()
-        {
-            if (Type != EventType.PeerDisconnected) return null;
-            unsafe
-            {
-                byte[] peerIdBuf = new byte[256];
-                fixed (byte* pidPtr = peerIdBuf)
-                {
-                    int peerIdLen = Event_PeerDisconnected_Query(_handle, pidPtr, peerIdBuf.Length);
-                    if (peerIdLen < 0) return null;
-                    return Encoding.UTF8.GetString(peerIdBuf, 0, peerIdLen);
-                }
-            }
-        }
-
-        public void Dispose()
-        {
-            if (_handle == IntPtr.Zero) return;
-            CloseEvent(_handle);
-            _handle = IntPtr.Zero;
-            GC.SuppressFinalize(this);
-        }
-
-        ~Event() => Dispose();
     }
 
-    #region Event Data Structures
-
-    public class WorldEnterEventData
+    public class ESessionRequest
     {
-        public byte[] WorldSessionId { get; init; } = [];
-        public string Url { get; init; } = string.Empty;
+        public Guid WSID { get; }
+        public Guid PeerWSID { get; }
+        public string PeerID { get; }
+        public ESessionRequest(IntPtr handle)
+        {
+            byte[] worldSessionId = new byte[16];
+            byte[] peerSessionId = new byte[16];
+            byte[] peerIdBuf = new byte[PeerIdMaxLength];
+            unsafe
+            {
+                fixed (byte* wsidPtr = worldSessionId)
+                fixed (byte* psidPtr = peerSessionId)
+                fixed (byte* pidPtr = peerIdBuf)
+                {
+                    int peerIdLen = Event_SessionRequest_Query(handle, wsidPtr, pidPtr, peerIdBuf.Length, psidPtr);
+                    if (peerIdLen < 0)
+                        throw new InternalBufferOverflowException("Event_SessionRequest_Query");
+                    WSID = new Guid(worldSessionId);
+                    PeerWSID = new Guid(peerSessionId);
+                    PeerID = Encoding.UTF8.GetString(peerIdBuf, 0, peerIdLen);
+                }
+            }
+            CloseEvent(handle);
+        }
     }
 
-    public class SessionEventData
+    public class ESessionReady
     {
-        public byte[] WorldSessionId { get; init; } = [];
-        public byte[] PeerSessionId { get; init; } = [];
-        public string PeerId { get; init; } = string.Empty;
+        public Guid WSID
+        {
+            get;
+        }
+        public Guid PeerWSID
+        {
+            get;
+        }
+        public string PeerID
+        {
+            get;
+        }
+        public ESessionReady(IntPtr handle)
+        {
+            byte[] worldSessionId = new byte[16];
+            byte[] peerSessionId = new byte[16];
+            byte[] peerIdBuf = new byte[PeerIdMaxLength];
+            unsafe
+            {
+                fixed (byte* wsidPtr = worldSessionId)
+                fixed (byte* psidPtr = peerSessionId)
+                fixed (byte* pidPtr = peerIdBuf)
+                {
+                    int peerIdLen = Event_SessionReady_Query(handle, wsidPtr, pidPtr, peerIdBuf.Length, psidPtr);
+                    if (peerIdLen < 0)
+                        throw new InternalBufferOverflowException("Event_SessionReady_Query");
+                    WSID = new Guid(worldSessionId);
+                    PeerWSID = new Guid(peerSessionId);
+                    PeerID = Encoding.UTF8.GetString(peerIdBuf, 0, peerIdLen);
+                }
+            }
+            CloseEvent(handle);
+        }
     }
 
+    public class ESessionClose
+    {
+        public Guid WSID
+        {
+            get;
+        }
+        public Guid PeerWSID
+        {
+            get;
+        }
+        public string PeerID
+        {
+            get;
+        }
+        public ESessionClose(IntPtr handle)
+        {
+            byte[] worldSessionId = new byte[16];
+            byte[] peerSessionId = new byte[16];
+            byte[] peerIdBuf = new byte[PeerIdMaxLength];
+            unsafe
+            {
+                fixed (byte* wsidPtr = worldSessionId)
+                fixed (byte* psidPtr = peerSessionId)
+                fixed (byte* pidPtr = peerIdBuf)
+                {
+                    int peerIdLen = Event_SessionClose_Query(handle, wsidPtr, pidPtr, peerIdBuf.Length, psidPtr);
+                    if (peerIdLen < 0)
+                        throw new InternalBufferOverflowException("Event_SessionClose_Query");
+                    WSID = new Guid(worldSessionId);
+                    PeerWSID = new Guid(peerSessionId);
+                    PeerID = Encoding.UTF8.GetString(peerIdBuf, 0, peerIdLen);
+                }
+            }
+            CloseEvent(handle);
+        }
+    }
     public class ObjectInfo
     {
-        public byte[] Id { get; init; } = [];
+        public Guid Id { get; init; } = Guid.Empty;
         public float[] Transform { get; init; } = [];
         public string Address { get; init; } = string.Empty;
     }
-
-    public class ObjectAppendEventData : SessionEventData
+    public class EObjectAppend
     {
-        public ObjectInfo[] Objects { get; set; } = [];
+        public Guid WSID { get; }
+        public Guid PeerWSID { get; }
+        public string PeerID { get; }
+        public ObjectInfo[] Objects { get; }
+        public EObjectAppend(IntPtr handle)
+        {
+            byte[] worldSessionId = new byte[16];
+            byte[] peerSessionId = new byte[16];
+            byte[] peerIdBuf = new byte[PeerIdMaxLength];
+            int objectCount;
+            unsafe
+            {
+                fixed (byte* wsidPtr = worldSessionId)
+                fixed (byte* psidPtr = peerSessionId)
+                fixed (byte* pidPtr = peerIdBuf)
+                {
+                    int peerIdLen = Event_ObjectAppend_Query(handle, wsidPtr, pidPtr, peerIdBuf.Length, psidPtr, &objectCount);
+                    if (peerIdLen < 0)
+                        throw new InternalBufferOverflowException("Event_ObjectAppend_Query");
+                    WSID = new Guid(worldSessionId);
+                    PeerWSID = new Guid(peerSessionId);
+                    PeerID = Encoding.UTF8.GetString(peerIdBuf, 0, peerIdLen);
+                    Objects = new ObjectInfo[objectCount];
+                }
+
+                var objectIdBuffers = new byte[16 * objectCount];
+                var transformBuffers = new float[16 * objectCount];
+                var objectAddrBuffers = new byte[(UrlMaxLength+1) * objectCount];
+
+                fixed (byte* objIdPtr = objectIdBuffers)
+                fixed (float* trPtr = transformBuffers)
+                fixed (byte* objUrlPtr = objectAddrBuffers)
+                {
+                    var objIdDp = new byte*[objectCount];
+                    var trDp = new float*[objectCount];
+                    var objUrlDp = new byte*[objectCount];
+
+                    for (int i = 0; i < objectCount; i++)
+                    {
+                        objIdDp[i] = objIdPtr + (16 * i);
+                        trDp[i] = trPtr + (16 * i);
+                        objUrlDp[i] = objUrlPtr + ((UrlMaxLength + 1) * i);
+                    }
+
+                    fixed (byte** objIdDpPtr = objIdDp)
+                    fixed (float** trDpPtr = trDp)
+                    fixed (byte** objUrlDpPtr = objUrlDp)
+                    {
+                        var result = Event_ObjectAppend_GetObjects(handle, objIdDpPtr, trDpPtr, objUrlDpPtr, UrlMaxLength);
+                        if (result != 0) {
+                            throw new InternalBufferOverflowException("Event_ObjectAppend_GetObjects");
+                        }
+                    }
+                }
+
+                for (int i = 0; i < objectCount; i++)
+                {
+                    Objects[i] = new ObjectInfo
+                    {
+                        Id = new Guid(new ReadOnlySpan<byte>(objectIdBuffers, i * 16, 16)),
+                        Transform = transformBuffers.AsSpan(i * 16, 16).ToArray(),
+                        Address = Encoding.UTF8.GetString(objectAddrBuffers, i * (UrlMaxLength + 1), UrlMaxLength).TrimEnd('\0')
+                    };
+                }
+            }
+            CloseEvent(handle);
+        }
+    }
+    public class EObjectDelete
+    {
+        public Guid WSID { get; }
+        public Guid PeerWSID { get; }
+        public string PeerID { get; }
+        public Guid[] ObjectIDs { get; }
+        public EObjectDelete(IntPtr handle)
+        {
+            byte[] worldSessionId = new byte[16];
+            byte[] peerSessionId = new byte[16];
+            byte[] peerIdBuf = new byte[PeerIdMaxLength];
+            int objectCount;
+            unsafe
+            {
+                fixed (byte* wsidPtr = worldSessionId)
+                fixed (byte* psidPtr = peerSessionId)
+                fixed (byte* pidPtr = peerIdBuf)
+                {
+                    int peerIdLen = Event_ObjectAppend_Query(handle, wsidPtr, pidPtr, peerIdBuf.Length, psidPtr, &objectCount);
+                    if (peerIdLen < 0)
+                        throw new InternalBufferOverflowException("Event_ObjectAppend_Query");
+                    WSID = new Guid(worldSessionId);
+                    PeerWSID = new Guid(peerSessionId);
+                    PeerID = Encoding.UTF8.GetString(peerIdBuf, 0, peerIdLen);
+                    ObjectIDs = new Guid[objectCount];
+                }
+
+                var objectIdBuffers = new byte[16 * objectCount];
+                fixed (byte* objIdPtr = objectIdBuffers)
+                {
+                    var objIdDp = new byte*[objectCount];
+
+                    for (int i = 0; i < objectCount; i++)
+                    {
+                        objIdDp[i] = objIdPtr + (16 * i);
+                    }
+
+                    fixed (byte** objIdDpPtr = objIdDp)
+                    {
+                        var result = Event_ObjectDelete_GetObjectIDs(handle, objIdDpPtr);
+                        if (result != 0)
+                        {
+                            throw new InternalBufferOverflowException("Event_ObjectAppend_GetObjects");
+                        }
+                    }
+                }
+
+                for (int i = 0; i < objectCount; i++)
+                {
+                    ObjectIDs[i] = new Guid(new ReadOnlySpan<byte>(objectIdBuffers, i * 16, 16));
+                }
+            }
+            CloseEvent(handle);
+        }
     }
 
-    public class ObjectDeleteEventData : SessionEventData
+    public class EWorldLeave
     {
-        public byte[][] ObjectIds { get; set; } = [];
+        public Guid WSID { get; }
+        public string Message { get; }
+        public int Code { get; }
+        public EWorldLeave(IntPtr handle)
+        {
+            int code;
+            byte[] worldSessionId = new byte[16];
+            byte[] messageBuf = new byte[GeneralTextMaxLength];
+            unsafe
+            {
+                fixed (byte* wsidPtr = worldSessionId)
+                fixed (byte* msgPtr = messageBuf)
+                {
+                    int msgLen = Event_WorldLeave_Query(handle, wsidPtr, &code, msgPtr, messageBuf.Length);
+                    if (msgLen < 0)
+                        throw new InternalBufferOverflowException("Event_WorldLeave_Query");
+                    WSID = new Guid(worldSessionId);
+                    Message = Encoding.UTF8.GetString(messageBuf, 0, msgLen);
+                    Code = code;
+                }
+            }
+            CloseEvent(handle);
+        }
     }
 
-    public class WorldLeaveEventData
+    public class EPeerConnected
     {
-        public byte[] WorldSessionId { get; init; } = [];
-        public int Code { get; init; }
-        public string Message { get; init; } = string.Empty;
+        public Peer Peer { get; }
+        public EPeerConnected(IntPtr handle)
+        {
+            unsafe
+            {
+                byte[] peerIdBuf = new byte[PeerIdMaxLength];
+                IntPtr peerHandle;
+                fixed (byte* pidPtr = peerIdBuf)
+                {
+                    int peerIdLen = Event_PeerConnected_Query(handle, &peerHandle, pidPtr, peerIdBuf.Length);
+                    if (peerIdLen < 0)
+                        throw new InternalBufferOverflowException("Event_PeerConnected_Query");
+                    Peer = new Peer(peerHandle, Encoding.UTF8.GetString(peerIdBuf, 0, peerIdLen));
+                }
+            }
+            CloseEvent(handle);
+        }
     }
 
-    public class PeerConnectedEventData
+    public class EPeerDisconnected
     {
-        public Peer Peer { get; init; } = null!;
-        public string PeerId { get; init; } = string.Empty;
+        public string PeerID { get; }
+        public EPeerDisconnected(IntPtr handle)
+        {
+            unsafe
+            {
+                byte[] peerIdBuf = new byte[PeerIdMaxLength];
+                fixed (byte* pidPtr = peerIdBuf)
+                {
+                    int peerIdLen = Event_PeerDisconnected_Query(handle, pidPtr, peerIdBuf.Length);
+                    if (peerIdLen < 0)
+                        throw new InternalBufferOverflowException("Event_PeerDisconnected_Query");
+                    PeerID = Encoding.UTF8.GetString(peerIdBuf, 0, peerIdLen);
+                }
+            }
+            CloseEvent(handle);
+        }
     }
-
-    #endregion
 
     #endregion
 
@@ -734,8 +730,13 @@ public static class AbyssLibB
     public class Peer : IDisposable
     {
         private IntPtr _handle;
+        public string ID { get; }
 
-        internal Peer(IntPtr handle) => _handle = handle;
+        internal Peer(IntPtr handle, string id)
+        {
+            _handle = handle;
+            ID = id;
+        }
 
         public bool IsValid => _handle != IntPtr.Zero;
         internal IntPtr Handle => _handle;
@@ -769,26 +770,32 @@ public static class AbyssLibB
         public bool IsValid => _handle != IntPtr.Zero;
         internal IntPtr Handle => _handle;
 
-        public void AcceptSession(Peer peer, byte[] peerSessionId)
+        public void AcceptSession(string peer_id, Guid peerWSID)
         {
+            var pidBytes = Encoding.UTF8.GetBytes(peer_id);
+            var psidBytes = peerWSID.ToByteArray();
             unsafe
             {
-                fixed (byte* psidPtr = peerSessionId)
+                fixed (byte* pidPtr = pidBytes)
+                fixed (byte* psidPtr = psidBytes)
                 {
-                    World_AcceptSession(_host.Handle, _handle, peer.Handle, psidPtr);
+                    World_AcceptSession(_host.Handle, _handle, pidPtr, pidBytes.Length, psidPtr);
                 }
             }
         }
 
-        public void DeclineSession(Peer peer, byte[] peerSessionId, int code, string message)
+        public void DeclineSession(Peer peer, string peer_id, Guid peerWSID, int code, string message)
         {
+            var pidBytes = Encoding.UTF8.GetBytes(peer_id);
+            var psidBytes = peerWSID.ToByteArray();
             byte[] msgBytes = Encoding.UTF8.GetBytes(message);
             unsafe
             {
-                fixed (byte* psidPtr = peerSessionId)
+                fixed (byte* pidPtr = pidBytes)
+                fixed (byte* psidPtr = psidBytes)
                 fixed (byte* msgPtr = msgBytes)
                 {
-                    World_DeclineSession(_host.Handle, _handle, peer.Handle, psidPtr, code, msgPtr, msgBytes.Length);
+                    World_DeclineSession(_host.Handle, _handle, pidPtr, pidBytes.Length, psidPtr, code, msgPtr, msgBytes.Length);
                 }
             }
         }
@@ -806,6 +813,40 @@ public static class AbyssLibB
 
     #endregion
 
+    #region Synchronization Primitives
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void CompleteTaskCompletionSourceCallback(IntPtr waiter);
+
+    internal class EventWaiter
+    {
+        TaskCompletionSource<bool> tcs;
+        GCHandle handle;
+        public IntPtr HandlePtr { get; }
+        public EventWaiter()
+        {
+            tcs = new TaskCompletionSource<bool>();
+            handle = GCHandle.Alloc(tcs, GCHandleType.Normal);
+            HandlePtr = GCHandle.ToIntPtr(handle);
+        }
+        public async Task Wait() // This must ba called, exactly once
+        {
+            _ = await tcs.Task;
+            handle.Free();
+        }
+        public static void Callback(IntPtr h_tcs)
+        {
+            var handle = GCHandle.FromIntPtr(h_tcs);
+            var tcs = (TaskCompletionSource<bool>?)handle.Target
+                ?? throw new NullReferenceException("CompleteTaskCompletionSource: TaskCompletionSource is null");
+
+            tcs.SetResult(true);
+        }
+    }
+
+    #endregion
+
+
     #region AbystClient
 
     public class AbystClient : IDisposable
@@ -816,46 +857,22 @@ public static class AbyssLibB
 
         public bool IsValid => _handle != IntPtr.Zero;
 
-        public (HttpIOResult?, Error?) Get(IntPtr hEvent, string peerId, string path)
+        public async Task<(HttpResponse?, Error?)> Get(string peerId, string path)
         {
-            byte[] peerIdBytes = Encoding.UTF8.GetBytes(peerId);
-            byte[] pathBytes = Encoding.UTF8.GetBytes(path);
-            unsafe
-            {
-                fixed (byte* peerIdPtr = peerIdBytes)
-                fixed (byte* pathPtr = pathBytes)
-                {
-                    IntPtr resultHandle;
-                    IntPtr errHandle = AbystClient_Get(_handle, hEvent, peerIdPtr, peerIdBytes.Length, pathPtr, pathBytes.Length, &resultHandle);
-                    if (errHandle != IntPtr.Zero)
-                        return (null, new Error(errHandle));
-                    return (new HttpIOResult(resultHandle), null);
-                }
-            }
+            var waiter = new EventWaiter();
+
+            var (result, primary_error) = Get_nowait(peerId, path, waiter.HandlePtr);
+            await waiter.Wait();
+            if (result == null)
+                return (null, primary_error);
+            
+            var (response, error) = result.Unpack();
+            result.Dispose(); // destroy temporary HttpIOResult
+
+            return (response, error);
         }
 
-        public (HttpIOResult?, Error?) Post(IntPtr hEvent, string peerId, string path, string contentType, byte[] body)
-        {
-            byte[] peerIdBytes = Encoding.UTF8.GetBytes(peerId);
-            byte[] pathBytes = Encoding.UTF8.GetBytes(path);
-            byte[] contentTypeBytes = Encoding.UTF8.GetBytes(contentType);
-            unsafe
-            {
-                fixed (byte* peerIdPtr = peerIdBytes)
-                fixed (byte* pathPtr = pathBytes)
-                fixed (byte* ctPtr = contentTypeBytes)
-                fixed (byte* bodyPtr = body)
-                {
-                    IntPtr resultHandle;
-                    IntPtr errHandle = AbystClient_Post(_handle, hEvent, peerIdPtr, peerIdBytes.Length, pathPtr, pathBytes.Length, ctPtr, contentTypeBytes.Length, bodyPtr, body.Length, &resultHandle);
-                    if (errHandle != IntPtr.Zero)
-                        return (null, new Error(errHandle));
-                    return (new HttpIOResult(resultHandle), null);
-                }
-            }
-        }
-
-        public (HttpIOResult?, Error?) Head(IntPtr hEvent, string peerId, string path)
+        private (HttpIOResult?, Error?) Get_nowait(string peerId, string path, IntPtr waiterHandle)
         {
             byte[] peerIdBytes = Encoding.UTF8.GetBytes(peerId);
             byte[] pathBytes = Encoding.UTF8.GetBytes(path);
@@ -865,7 +882,7 @@ public static class AbyssLibB
                 fixed (byte* pathPtr = pathBytes)
                 {
                     IntPtr resultHandle;
-                    IntPtr errHandle = AbystClient_Head(_handle, hEvent, peerIdPtr, peerIdBytes.Length, pathPtr, pathBytes.Length, &resultHandle);
+                    IntPtr errHandle = AbystClient_Get(_handle, peerIdPtr, peerIdBytes.Length, pathPtr, pathBytes.Length, &resultHandle, EventWaiter.Callback, waiterHandle);
                     if (errHandle != IntPtr.Zero)
                         return (null, new Error(errHandle));
                     return (new HttpIOResult(resultHandle), null);
@@ -896,7 +913,21 @@ public static class AbyssLibB
 
         public bool IsValid => _handle != IntPtr.Zero;
 
-        public (HttpIOResult?, Error?) Get(IntPtr hEvent, string url)
+        public async Task<(HttpResponse?, Error?)> Get(string url)
+        {
+            var waiter = new EventWaiter();
+
+            var (result, primary_error) = Get_nowait(url, waiter.HandlePtr);
+            await waiter.Wait();
+            if (result == null)
+                return (null, primary_error);
+
+            var (response, error) = result.Unpack();
+            result.Dispose(); // destroy temporary HttpIOResult
+
+            return (response, error);
+        }
+        private (HttpIOResult?, Error?) Get_nowait(string url, IntPtr waiterHandle)
         {
             byte[] urlBytes = Encoding.UTF8.GetBytes(url);
             unsafe
@@ -904,7 +935,7 @@ public static class AbyssLibB
                 fixed (byte* urlPtr = urlBytes)
                 {
                     IntPtr resultHandle;
-                    IntPtr errHandle = Http3Client_Get(_handle, hEvent, urlPtr, urlBytes.Length, &resultHandle);
+                    IntPtr errHandle = Http3Client_Get(_handle, urlPtr, urlBytes.Length, &resultHandle, EventWaiter.Callback, waiterHandle);
                     if (errHandle != IntPtr.Zero)
                         return (null, new Error(errHandle));
                     return (new HttpIOResult(resultHandle), null);

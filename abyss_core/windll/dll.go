@@ -112,8 +112,14 @@ func CloseHost(h C.uintptr_t) {
 	deleteHandle(handle)
 }
 
-//export Host_Run
-func Host_Run(h C.uintptr_t) {
+//export Host_Bind
+func Host_Bind(h C.uintptr_t) C.uintptr_t {
+	host := cgo.Handle(h).Value().(*ahost.AbyssHost)
+	return marshalError(host.Bind())
+}
+
+//export Host_Serve
+func Host_Serve(h C.uintptr_t) {
 	go cgo.Handle(h).Value().(*ahost.AbyssHost).Serve()
 }
 

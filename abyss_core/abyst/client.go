@@ -39,11 +39,11 @@ func NewAbystClient(root IHost) *AbystClient {
 }
 
 func (c *AbystClient) Get(id string, path string) (resp *http.Response, err error) {
-	return c.client.Get("https://" + id + ".com/" + path)
+	return c.client.Get("https://" + id + ".abyst/" + path)
 }
 func (c *AbystClient) Head(id string, path string) (resp *http.Response, err error) {
-	return c.client.Head("https://" + id + ".com/" + path)
+	return c.client.Head("https://" + id + ".abyst/" + path)
 }
 func (c *AbystClient) Post(id string, path, contentType string, body io.Reader) (resp *http.Response, err error) {
-	return c.client.Post("https://"+id+".com/"+path, contentType, body)
+	return c.client.Post("https://"+id+".abyst/"+path, contentType, body)
 }

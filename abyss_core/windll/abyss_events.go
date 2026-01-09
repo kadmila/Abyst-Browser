@@ -79,8 +79,8 @@ func Event_WorldEnter_Query(
 func Event_SessionRequest_Query(
 	h_event C.uintptr_t,
 	world_session_id_buf *C.char,
-	peer_session_id_buf *C.char,
 	peer_id_buf_ptr *C.char, peer_id_buf_len C.int,
+	peer_session_id_buf *C.char,
 ) C.int {
 	event := cgo.Handle(h_event).Value().(*and.EANDSessionRequest)
 
@@ -103,8 +103,8 @@ func Event_SessionRequest_Query(
 func Event_SessionReady_Query(
 	h_event C.uintptr_t,
 	world_session_id_buf *C.char,
-	peer_session_id_buf *C.char,
 	peer_id_buf_ptr *C.char, peer_id_buf_len C.int,
+	peer_session_id_buf *C.char,
 ) C.int {
 	event := cgo.Handle(h_event).Value().(*and.EANDSessionReady)
 
@@ -127,8 +127,8 @@ func Event_SessionReady_Query(
 func Event_SessionClose_Query(
 	h_event C.uintptr_t,
 	world_session_id_buf *C.char,
-	peer_session_id_buf *C.char,
 	peer_id_buf_ptr *C.char, peer_id_buf_len C.int,
+	peer_session_id_buf *C.char,
 ) C.int {
 	event := cgo.Handle(h_event).Value().(*and.EANDSessionClose)
 
@@ -151,8 +151,8 @@ func Event_SessionClose_Query(
 func Event_ObjectAppend_Query(
 	h_event C.uintptr_t,
 	world_session_id_buf *C.char,
-	peer_session_id_buf *C.char,
 	peer_id_buf_ptr *C.char, peer_id_buf_len C.int,
+	peer_session_id_buf *C.char,
 	object_count_out *C.int,
 ) C.int {
 	event := cgo.Handle(h_event).Value().(*and.EANDObjectAppend)
@@ -213,8 +213,8 @@ func Event_ObjectAppend_GetObjects(
 func Event_ObjectDelete_Query(
 	h_event C.uintptr_t,
 	world_session_id_buf *C.char,
-	peer_session_id_buf *C.char,
 	peer_id_buf_ptr *C.char, peer_id_buf_len C.int,
+	peer_session_id_buf *C.char,
 	object_count_out *C.int,
 ) C.int {
 	event := cgo.Handle(h_event).Value().(*and.EANDObjectDelete)

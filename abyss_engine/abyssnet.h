@@ -32,6 +32,16 @@ typedef struct { const char *p; ptrdiff_t n; } _GoString_;
 #include <stdint.h>
 #include <windows.h>
 
+#ifndef _WAITER_CALLBACK_T
+
+typedef void (*waiter_callback_t)(uintptr_t);
+static inline void call_waiter_callback(waiter_callback_t cb, uintptr_t value) {
+	cb(value);
+}
+
+#define _WAITER_CALLBACK_T
+#endif
+
 #line 1 "cgo-generated-wrapper"
 
 #line 3 "collocatedh3.go"
@@ -39,6 +49,16 @@ typedef struct { const char *p; ptrdiff_t n; } _GoString_;
 
 #include <stdint.h>
 #include <windows.h>
+
+#ifndef _WAITER_CALLBACK_T
+
+typedef void (*waiter_callback_t)(uintptr_t);
+static inline void call_waiter_callback(waiter_callback_t cb, uintptr_t value) {
+	cb(value);
+}
+
+#define _WAITER_CALLBACK_T
+#endif
 
 #line 1 "cgo-generated-wrapper"
 
@@ -118,21 +138,21 @@ extern "C" {
 #endif
 
 extern __declspec(dllexport) int Event_WorldEnter_Query(uintptr_t h_event, char* world_session_id_buf, char* url_buf_ptr, int url_buf_len);
-extern __declspec(dllexport) int Event_SessionRequest_Query(uintptr_t h_event, char* world_session_id_buf, char* peer_session_id_buf, char* peer_id_buf_ptr, int peer_id_buf_len);
-extern __declspec(dllexport) int Event_SessionReady_Query(uintptr_t h_event, char* world_session_id_buf, char* peer_session_id_buf, char* peer_id_buf_ptr, int peer_id_buf_len);
-extern __declspec(dllexport) int Event_SessionClose_Query(uintptr_t h_event, char* world_session_id_buf, char* peer_session_id_buf, char* peer_id_buf_ptr, int peer_id_buf_len);
-extern __declspec(dllexport) int Event_ObjectAppend_Query(uintptr_t h_event, char* world_session_id_buf, char* peer_session_id_buf, char* peer_id_buf_ptr, int peer_id_buf_len, int* object_count_out);
+extern __declspec(dllexport) int Event_SessionRequest_Query(uintptr_t h_event, char* world_session_id_buf, char* peer_id_buf_ptr, int peer_id_buf_len, char* peer_session_id_buf);
+extern __declspec(dllexport) int Event_SessionReady_Query(uintptr_t h_event, char* world_session_id_buf, char* peer_id_buf_ptr, int peer_id_buf_len, char* peer_session_id_buf);
+extern __declspec(dllexport) int Event_SessionClose_Query(uintptr_t h_event, char* world_session_id_buf, char* peer_id_buf_ptr, int peer_id_buf_len, char* peer_session_id_buf);
+extern __declspec(dllexport) int Event_ObjectAppend_Query(uintptr_t h_event, char* world_session_id_buf, char* peer_id_buf_ptr, int peer_id_buf_len, char* peer_session_id_buf, int* object_count_out);
 extern __declspec(dllexport) int Event_ObjectAppend_GetObjects(uintptr_t h_event, char** object_id_bufs, float** object_transform_bufs, char** object_addr_bufs, int object_addr_buf_len);
-extern __declspec(dllexport) int Event_ObjectDelete_Query(uintptr_t h_event, char* world_session_id_buf, char* peer_session_id_buf, char* peer_id_buf_ptr, int peer_id_buf_len, int* object_count_out);
+extern __declspec(dllexport) int Event_ObjectDelete_Query(uintptr_t h_event, char* world_session_id_buf, char* peer_id_buf_ptr, int peer_id_buf_len, char* peer_session_id_buf, int* object_count_out);
 extern __declspec(dllexport) int Event_ObjectDelete_GetObjectIDs(uintptr_t h_event, char** object_id_bufs);
 extern __declspec(dllexport) int Event_WorldLeave_Query(uintptr_t h_event, char* world_session_id_buf, int* code_out, char* message_buf_ptr, int message_buf_len);
 extern __declspec(dllexport) int Event_PeerConnected_Query(uintptr_t h_event, uintptr_t* peer_handle_out, char* peer_id_buf_ptr, int peer_id_buf_len);
 extern __declspec(dllexport) void ClosePeer(uintptr_t h_peer);
 extern __declspec(dllexport) int Event_PeerDisconnected_Query(uintptr_t h_event, char* peer_id_buf_ptr, int peer_id_buf_len);
-extern __declspec(dllexport) uintptr_t AbystClient_Get(uintptr_t h_client, HANDLE h_event, char* peer_id_ptr, int peer_id_len, char* path_ptr, int path_len, uintptr_t* result_handle_out);
+extern __declspec(dllexport) uintptr_t AbystClient_Get(uintptr_t h_client, char* peer_id_ptr, int peer_id_len, char* path_ptr, int path_len, uintptr_t* result_handle_out, waiter_callback_t waiter_callback, uintptr_t waiter_callback_arg);
 extern __declspec(dllexport) uintptr_t AbystClient_Post(uintptr_t h_client, HANDLE h_event, char* peer_id_ptr, int peer_id_len, char* path_ptr, int path_len, char* content_type_ptr, int content_type_len, char* body_ptr, int body_len, uintptr_t* result_handle_out);
 extern __declspec(dllexport) uintptr_t AbystClient_Head(uintptr_t h_client, HANDLE h_event, char* peer_id_ptr, int peer_id_len, char* path_ptr, int path_len, uintptr_t* result_handle_out);
-extern __declspec(dllexport) uintptr_t Http3Client_Get(uintptr_t h_client, HANDLE h_event, char* url_ptr, int url_len, uintptr_t* result_handle_out);
+extern __declspec(dllexport) uintptr_t Http3Client_Get(uintptr_t h_client, char* url_ptr, int url_len, uintptr_t* result_handle_out, waiter_callback_t waiter_callback, uintptr_t waiter_callback_arg);
 extern __declspec(dllexport) uintptr_t Http3Client_Post(uintptr_t h_client, HANDLE h_event, char* url_ptr, int url_len, char* content_type_ptr, int content_type_len, char* body_ptr, int body_len, uintptr_t* result_handle_out);
 extern __declspec(dllexport) uintptr_t Http3Client_Head(uintptr_t h_client, HANDLE h_event, char* url_ptr, int url_len, uintptr_t* result_handle_out);
 extern __declspec(dllexport) int Init();
@@ -141,7 +161,8 @@ extern __declspec(dllexport) int GetErrorBody(uintptr_t h_error, char* buf_ptr, 
 extern __declspec(dllexport) void CloseError(uintptr_t h_error);
 extern __declspec(dllexport) uintptr_t NewHost(char* root_key_ptr, int root_key_len, uintptr_t* out);
 extern __declspec(dllexport) void CloseHost(uintptr_t h);
-extern __declspec(dllexport) void Host_Run(uintptr_t h);
+extern __declspec(dllexport) uintptr_t Host_Bind(uintptr_t h);
+extern __declspec(dllexport) void Host_Serve(uintptr_t h);
 extern __declspec(dllexport) uintptr_t Host_WaitForEvent(uintptr_t h, int* event_type_out, uintptr_t* event_handle_out);
 extern __declspec(dllexport) void CloseEvent(uintptr_t h);
 extern __declspec(dllexport) uintptr_t Host_OpenWorld(uintptr_t h, char* world_url_ptr, int world_url_len, uintptr_t* world_handle_out);
@@ -168,8 +189,8 @@ extern __declspec(dllexport) int HttpResponse_GetHeader(uintptr_t h_response, ch
 extern __declspec(dllexport) int HttpResponse_GetAllHeaders(uintptr_t h_response, char* buf_ptr, int buf_len);
 extern __declspec(dllexport) int HttpResponse_ReadBody(uintptr_t h_response, char* buf_ptr, int buf_len);
 extern __declspec(dllexport) void CloseHttpResponse(uintptr_t h_response);
-extern __declspec(dllexport) void World_AcceptSession(uintptr_t h_host, uintptr_t h_world, uintptr_t h_peer, char* peer_session_id_buf);
-extern __declspec(dllexport) void World_DeclineSession(uintptr_t h_host, uintptr_t h_world, uintptr_t h_peer, char* peer_session_id_buf, int code, char* message_buf_ptr, int message_buf_len);
+extern __declspec(dllexport) void World_AcceptSession(uintptr_t h_host, uintptr_t h_world, char* peer_id_buf_ptr, int peer_id_buf_len, char* peer_session_id_buf);
+extern __declspec(dllexport) void World_DeclineSession(uintptr_t h_host, uintptr_t h_world, char* peer_id_buf_ptr, int peer_id_buf_len, char* peer_session_id_buf, int code, char* message_buf_ptr, int message_buf_len);
 extern __declspec(dllexport) void World_Close(uintptr_t h_host, uintptr_t h_world);
 extern __declspec(dllexport) void World_ObjectAppend(uintptr_t h_host, uintptr_t h_world, int peer_count, uintptr_t* h_peers, char** peer_session_id_bufs, int object_count, char** object_id_bufs, float** object_transform_bufs, char** object_addr_bufs, int object_addr_buf_len);
 extern __declspec(dllexport) void World_ObjectDelete(uintptr_t h_host, uintptr_t h_world, int peer_count, uintptr_t* h_peers, char** peer_session_id_bufs, int object_count, char** object_id_bufs);

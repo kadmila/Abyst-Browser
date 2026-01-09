@@ -166,7 +166,7 @@ func TestJoinWorld(t *testing.T) {
 	session_request := expectEvent[*and.EANDSessionRequest](t, host_A.GetEventCh())
 
 	// Host A accepts the session request
-	host_A.AcceptWorldSession(world_A, session_request.Peer, session_request.SessionID)
+	host_A.AcceptWorldSession(world_A, session_request.Peer.ID(), session_request.SessionID)
 
 	// Host B should receive EANDWorldEnter event
 	expectEvent[*and.EANDWorldEnter](t, host_B.GetEventCh())
@@ -263,7 +263,7 @@ func TestJoinWorldTransitive(t *testing.T) {
 
 		// 3. receives EANDSessionRequest (from B), accepts it
 		session_req_B := expectEvent[*and.EANDSessionRequest](t, host_A.GetEventCh())
-		host_A.AcceptWorldSession(world_A, session_req_B.Peer, session_req_B.SessionID)
+		host_A.AcceptWorldSession(world_A, session_req_B.Peer.ID(), session_req_B.SessionID)
 
 		// 4. receives EANDSessionReady (from B)
 		expectEvent[*and.EANDSessionReady](t, host_A.GetEventCh())
@@ -273,7 +273,7 @@ func TestJoinWorldTransitive(t *testing.T) {
 
 		// 6. receives EANDSessionRequest (from C), accepts it
 		session_req_C := expectEvent[*and.EANDSessionRequest](t, host_A.GetEventCh())
-		host_A.AcceptWorldSession(world_A, session_req_C.Peer, session_req_C.SessionID)
+		host_A.AcceptWorldSession(world_A, session_req_C.Peer.ID(), session_req_C.SessionID)
 
 		// 7. receives EANDSessionReady (from C)
 		expectEvent[*and.EANDSessionReady](t, host_A.GetEventCh())
@@ -308,7 +308,7 @@ func TestJoinWorldTransitive(t *testing.T) {
 
 		// 5. receives EANDSessionRequest (from C), accepts it
 		session_req_C := expectEvent[*and.EANDSessionRequest](t, host_B.GetEventCh())
-		host_B.AcceptWorldSession(world_enter_B.World, session_req_C.Peer, session_req_C.SessionID)
+		host_B.AcceptWorldSession(world_enter_B.World, session_req_C.Peer.ID(), session_req_C.SessionID)
 
 		// 6. receives EANDSessionReady (from C)
 		expectEvent[*and.EANDSessionReady](t, host_B.GetEventCh())
@@ -341,7 +341,7 @@ func TestJoinWorldTransitive(t *testing.T) {
 
 		// 5. receives EANDSessionRequest (from A), accepts it
 		session_req_A := expectEvent[*and.EANDSessionRequest](t, host_C.GetEventCh())
-		host_C.AcceptWorldSession(world_enter_C.World, session_req_A.Peer, session_req_A.SessionID)
+		host_C.AcceptWorldSession(world_enter_C.World, session_req_A.Peer.ID(), session_req_A.SessionID)
 
 		// 6. receives EANDSessionReady (from A)
 		expectEvent[*and.EANDSessionReady](t, host_C.GetEventCh())
@@ -436,7 +436,7 @@ func TestJoinWorldTransitiveNPeers(t *testing.T) {
 		for i := 1; i <= (N - 1); i++ {
 			expectEvent[*ahost.EPeerConnected](t, hosts[0].GetEventCh())
 			session_req := expectEvent[*and.EANDSessionRequest](t, hosts[0].GetEventCh())
-			hosts[0].AcceptWorldSession(world_0, session_req.Peer, session_req.SessionID)
+			hosts[0].AcceptWorldSession(world_0, session_req.Peer.ID(), session_req.SessionID)
 			expectEvent[*and.EANDSessionReady](t, hosts[0].GetEventCh())
 		}
 	}()
@@ -491,7 +491,7 @@ func TestJoinWorldTransitiveNPeers(t *testing.T) {
 						peer_connected_count++
 					case *and.EANDSessionRequest:
 						// Accept immediately
-						hosts[idx].AcceptWorldSession(world_enter.World, e.Peer, e.SessionID)
+						hosts[idx].AcceptWorldSession(world_enter.World, e.Peer.ID(), e.SessionID)
 						session_requests = append(session_requests, e)
 					}
 				case <-time.After(time.Second * 5):
@@ -513,7 +513,7 @@ func TestJoinWorldTransitiveNPeers(t *testing.T) {
 			for i := idx + 1; i <= (N - 1); i++ {
 				expectEvent[*ahost.EPeerConnected](t, hosts[idx].GetEventCh())
 				session_req := expectEvent[*and.EANDSessionRequest](t, hosts[idx].GetEventCh())
-				hosts[idx].AcceptWorldSession(world_enter.World, session_req.Peer, session_req.SessionID)
+				hosts[idx].AcceptWorldSession(world_enter.World, session_req.Peer.ID(), session_req.SessionID)
 				expectEvent[*and.EANDSessionReady](t, hosts[idx].GetEventCh())
 			}
 		}()
